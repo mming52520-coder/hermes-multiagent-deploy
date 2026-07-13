@@ -1,0 +1,14 @@
+deploy.env
+installed-commit.txt
+*.tar.gz
+
+# Local Codex workspace metadata
+.agents/
+.codex/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Local script backups
+*.before-*
