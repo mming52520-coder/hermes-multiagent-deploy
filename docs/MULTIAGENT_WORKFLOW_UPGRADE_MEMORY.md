@@ -164,3 +164,5 @@
 - 同步前完整回归：47 tests / 25.389s / OK，见 docs/GITHUB_SYNC_VALIDATION.txt；JavaScript 语法、ShellCheck error 级别、git diff --check、包内 82 项哈希和外层 SHA-256 通过。凭据扫描最初误匹配供应商代码的 mask-image CSS 名称，补齐词边界后复核无密钥/令牌模式匹配。deploy.env 与本地状态继续忽略，包内无凭据或 Git 元数据。
 - GitHub Git 读取正常，远端 main 仍为 01a40f840671e122b045746873726426859af9b3；GitHub API 的 GraphQL/REST 均被当前网络策略拒绝，api.github.com 不在允许列表中，因此不能把 PR 创建当成已完成。推送结果需以远端分支 SHA 核对，不能把 compare 链接描述为已创建 PR。
 - P0 仍 PARTIAL_PASS，P1/P2 仍 BLOCKED；v0.22.5 完整写入保持未适配/关闭，不以入库代替部署和生产验证。
+
+同步结果：实现提交 c7c11a610d75bd3c164aade2404ae20345f3d5f9 已推送到 origin/codex/chinese-workflow-app，git ls-remote 核对一致；main 保持 01a40f840671e122b045746873726426859af9b3。GitHub API 受当前网络策略限制，未创建 PR，创建入口为 https://github.com/mming52520-coder/hermes-multiagent-deploy/pull/new/codex/chinese-workflow-app 。仓库 downloads 目录中的新包 SHA-256 为 163a7aa73fb6965c51411121aced116e1730213997fa149a5ef1ac8ed67eeba5，仅 README 与清单相对于已浏览器验证的 v3 包更新。凭据和运行状态未上传；未执行部署或主分支合并。
