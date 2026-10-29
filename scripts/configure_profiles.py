@@ -8,9 +8,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import yaml
-
-
 PROFILES = ("orchestrator", "researcher", "builder", "reviewer")
 
 CUSTOM_PROVIDERS: dict[str, dict[str, str]] = {
@@ -181,11 +178,16 @@ def deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
 def read_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
+    import yaml
+
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     return data if isinstance(data, dict) else {}
 
 
 def write_yaml(path: Path, data: dict[str, Any]) -> None:
+    # Only configuration writes need PyYAML; read-only Dashboard routes do not.
+    import yaml
+
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".yaml.tmp")
     tmp.write_text(
@@ -268,6 +270,42 @@ def profile_model_config(
     return model_cfg, custom_entries, secrets
 
 
+def worker_mounts(
+    profile: str,
+    project_dir: Path,
+    kanban_root: Path,
+    output_dir: Path,
+    workspace: Path | None = None,
+) -> list[str]:
+    """Only a task-scoped Builder gets a writable candidate checkout.
+
+    Keep host/container paths identical: linked Git metadata and dispatched
+    TERMINAL_CWD must resolve to the same target in the container.
+    """
+    project_dir, kanban_root, output_dir = (p.resolve() for p in (project_dir, kanban_root, output_dir))
+    if any(':' in str(p) for p in (project_dir, kanban_root, output_dir)):
+        raise ValueError("Docker bind paths cannot contain ':'")
+    for protected in (project_dir, kanban_root):
+        if output_dir == protected or protected in output_dir.parents or output_dir in protected.parents:
+            raise ValueError("output must not expose project or Kanban storage as writable")
+    mounts = [
+        f"{project_dir}:{project_dir}:ro",
+        f"{kanban_root}:{kanban_root}:ro",
+    ]
+    if workspace is not None:
+        workspace = workspace.resolve()
+        if workspace == project_dir or workspace in project_dir.parents or project_dir in workspace.parents:
+            raise ValueError("workspace must be separate from the original project")
+        if ':' in str(workspace) or (workspace / ".git").is_symlink() or not (workspace / ".git").is_dir():
+            raise ValueError("workspace requires an independent Git clone, not shared worktree metadata")
+        mounts.append(f"{workspace}:{workspace}:{'rw' if profile == 'builder' else 'ro'}")
+        # The pinned CLI rejects /home/... as a container cwd even when mounted.
+        # Keep the host-path alias for Kanban prompts and a stable container cwd.
+        mounts.append(f"{workspace}:/candidate:{'rw' if profile == 'builder' else 'ro'}")
+    mounts.append(f"{output_dir}:{output_dir}:rw")
+    return mounts
+
+
 def main() -> int:
     if len(sys.argv) not in {2, 3}:
         print(
@@ -298,7 +336,7 @@ def main() -> int:
         return 0
 
     home = Path.home()
-    root = home / ".hermes"
+    root = Path(os.environ.get("HERMES_HOME") or str(home / ".hermes")).expanduser().resolve()
     project_dir = Path(env["PROJECT_DIR"]).resolve()
     output_dir = Path(env["OUTPUT_DIR"]).resolve()
     kanban_root = root / "kanban"
@@ -405,9 +443,8 @@ def main() -> int:
                 "inherit_mcp_toolsets": False,
             }
         else:
-            project_mount = f"{project_dir}:{project_dir}"
+            (output_dir / profile).mkdir(parents=True, exist_ok=True)
             if profile == "researcher":
-                project_mount += ":ro"
                 memory_mb = as_int(env, "RESEARCHER_MEMORY_MB", 3072)
                 max_iterations = 20
             elif profile == "builder":
@@ -430,15 +467,13 @@ def main() -> int:
                     "CI": "1",
                     "PYTHONUNBUFFERED": "1",
                 },
-                "docker_volumes": [
-                    project_mount,
-                    f"{kanban_root}:{kanban_root}",
-                    f"{output_dir}:{output_dir}",
-                ],
+                "docker_volumes": worker_mounts(
+                    profile, project_dir, kanban_root, output_dir / profile
+                ),
                 "container_cpu": as_int(env, "WORKER_CPU", 2),
                 "container_memory": memory_mb,
                 "container_persistent": True,
-                "docker_persist_across_processes": True,
+                "docker_persist_across_processes": False,
                 "docker_orphan_reaper": True,
             }
             if profile == "builder":
@@ -492,10 +527,12 @@ def main() -> int:
         if not soul_src.exists():
             raise SystemExit(f"缺少 SOUL 模板：{soul_src}")
         soul_dst = profile_home / "SOUL.md"
-        soul_dst.write_text(soul_src.read_text(encoding="utf-8"), encoding="utf-8")
-        soul_dst.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        # User-authored SOUL contracts must survive configuration refreshes.
+        if not soul_dst.exists():
+            soul_dst.write_text(soul_src.read_text(encoding="utf-8"), encoding="utf-8")
+            soul_dst.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
-    print("已写入四个 Profile 的 config.yaml、最小权限 .env 和 SOUL.md。")
+    print("已更新四个 Profile 的 config.yaml 和最小权限 .env；已有 SOUL.md 保留，新 Profile 使用模板。")
     return 0
 
 

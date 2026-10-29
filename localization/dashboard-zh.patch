@@ -1,0 +1,187 @@
+--- a/web/src/i18n/zh.ts
++++ b/web/src/i18n/zh.ts
+@@ -49,6 +49,23 @@
+   },
+ 
+   app: {
++    dismiss: "关闭提示",
++    sharedMetricsTitle: "帮助改进 Hermes？",
++    sharedMetricsBody: "共享指标仅包含有数量上限的计数，不包含提示词、文件、路径或错误原文。启用后每天发送给 Nous 一次。",
++    sharedMetricsReaskBody: "再次询问：旧版可能在你看到此问题前保存了“不共享”。请确认你的选择。",
++    sharedMetricsShare: "同意共享",
++    sharedMetricsOff: "不共享",
++    sharedMetricsDetails: "查看详情",
++    sharedMetricsSaveFailed: "未能保存选择，请重试",
++    managingProfile: "当前管理的配置",
++    currentProfileOption: "此管理面板（{name}）",
++    managingProfileBanner: "正在管理配置“{name}”：配置、密钥、技能、工具、模型和新对话均作用于此配置。",
++    memoryOomRestartBanner: "智能体意外重启，可能因为内存不足。长会话和并发任务较多时会增加内存占用。",
++    memoryCriticalBanner: "智能体内存即将耗尽，可能重启。可关闭空闲会话或增加内存。",
++    memoryElevatedBanner: "智能体可用内存较低。",
++    diskCriticalBanner: "磁盘即将用尽，消息、记忆和设置可能无法保存。",
++    diskElevatedBanner: "磁盘剩余空间较少，可清理旧会话或扩容。",
++    multiplexStandaloneBanner: "网关当前仅服务一套配置。未接入：{profiles}。原因：{reason}。迁移命令：hermes gateway migrate --multiplex。请先由操作员评估。",
+     brand: "Hermes Agent",
+     brandShort: "HA",
+     closeNavigation: "关闭导航",
+@@ -66,6 +83,13 @@
+       stopped: "已停止",
+     },
+     nav: {
++      files: "文件",
++      channels: "频道",
++      webhooks: "事件回调",
++      pairing: "设备配对",
++      system: "系统管理",
++      kanban: "任务看板",
++      achievements: "成就",
+       analytics: "分析",
+       chat: "对话",
+       config: "配置",
+@@ -74,7 +98,7 @@
+       keys: "密钥",
+       logs: "日志",
+       models: "模型",
+-      profiles: "多Agent配置",
++      profiles: "多智能体配置",
+       plugins: "插件管理",
+       sessions: "会话",
+       skills: "技能",
+@@ -289,16 +313,16 @@
+   },
+ 
+   profiles: {
+-    newProfile: "新建多Agent配置",
++    newProfile: "新建多智能体配置",
+     name: "名称",
+     namePlaceholder: "例如：coder, writer 等",
+     nameRequired: "名称必填",
+     nameRule:
+       "仅允许小写字母、数字、下划线和短横线；首字符必须是字母或数字；最多 64 个字符。",
+-    invalidName: "多Agent配置名称非法",    cloneFrom: "从配置文件克隆",
++    invalidName: "多智能体配置名称非法",    cloneFrom: "从配置文件克隆",
+     cloneFromNone: "无（空白）",
+-    allProfiles: "多Agent配置列表",
+-    noProfiles: "暂无多Agent配置。",
++    allProfiles: "多智能体配置列表",
++    noProfiles: "暂无多智能体配置。",
+     defaultBadge: "默认",
+     hasEnv: "已配置 env",
+     model: "模型",
+@@ -312,9 +336,9 @@
+     openInTerminal: "复制 CLI 命令",
+     commandCopied: "已复制到剪贴板",
+     copyFailed: "复制失败",
+-    confirmDeleteTitle: "删除多Agent配置？",
++    confirmDeleteTitle: "删除多智能体配置？",
+     confirmDeleteMessage:
+-      "将永久删除多Agent配置 '{name}' — 包括配置、密钥、记忆、会话、技能、定时任务。此操作无法撤销。",
++      "将永久删除多智能体配置 '{name}' — 包括配置、密钥、记忆、会话、技能、定时任务。此操作无法撤销。",
+     created: "已创建",
+     deleted: "已删除",
+     renamed: "已重命名",
+@@ -506,8 +530,8 @@
+ 
+   achievements: {
+     hero: {
+-      kicker: "Agentic Gamerscore",
+-      title: "Hermes Achievements",
++      kicker: "智能体成就积分",
++      title: "Hermes 成就",
+       subtitle:
+         "从真实会话历史中获得的 Hermes 可收集徽章。已知尚未达成的成就显示为「已发现」；秘密成就在首次出现匹配行为之前保持隐藏。",
+       scan_subtitle:
+--- a/web/src/i18n/types.ts
++++ b/web/src/i18n/types.ts
+@@ -93,6 +93,13 @@
+       stopped: string;
+     };
+     nav: {
++      files?: string;
++      channels?: string;
++      webhooks?: string;
++      pairing?: string;
++      system?: string;
++      kanban?: string;
++      achievements?: string;
+       analytics: string;
+       chat: string;
+       config: string;
+--- a/web/src/App.tsx
++++ b/web/src/App.tsx
+@@ -192,7 +192,7 @@
+     label: "Sessions",
+     icon: MessageSquare,
+   },
+-  { path: "/files", label: "Files", icon: FolderOpen },
++  { path: "/files", labelKey: "files", label: "Files", icon: FolderOpen },
+   {
+     path: "/analytics",
+     labelKey: "analytics",
+@@ -210,13 +210,13 @@
+   { path: "/skills", labelKey: "skills", label: "Skills", icon: Package },
+   { path: "/plugins", labelKey: "plugins", label: "Plugins", icon: Puzzle },
+   { path: "/mcp", label: "MCP", icon: Plug },
+-  { path: "/channels", label: "Channels", icon: Radio },
+-  { path: "/webhooks", label: "Webhooks", icon: Webhook },
+-  { path: "/pairing", label: "Pairing", icon: ShieldCheck },
++  { path: "/channels", labelKey: "channels", label: "Channels", icon: Radio },
++  { path: "/webhooks", labelKey: "webhooks", label: "Webhooks", icon: Webhook },
++  { path: "/pairing", labelKey: "pairing", label: "Pairing", icon: ShieldCheck },
+   { path: "/profiles", labelKey: "profiles", label: "Profiles", icon: Users },
+   { path: "/config", labelKey: "config", label: "Config", icon: Settings },
+   { path: "/env", labelKey: "keys", label: "Keys", icon: KeyRound },
+-  { path: "/system", label: "System", icon: Wrench },
++  { path: "/system", labelKey: "system", label: "System", icon: Wrench },
+   {
+     path: "/docs",
+     labelKey: "documentation",
+@@ -268,6 +268,7 @@
+     const pluginItem: NavItem = {
+       path: manifest.tab.path,
+       label: manifest.label,
++      labelKey: ({ kanban: "kanban", "hermes-achievements": "achievements" } as Record<string, string>)[manifest.name],
+       icon: resolveIcon(manifest.icon),
+     };
+ 
+--- a/web/src/lib/resolve-page-title.ts
++++ b/web/src/lib/resolve-page-title.ts
+@@ -2,6 +2,11 @@
+ 
+ const BUILTIN: Record<string, keyof Translations["app"]["nav"]> = {
+   "/chat": "chat",
++  "/files": "files",
++  "/channels": "channels",
++  "/webhooks": "webhooks",
++  "/pairing": "pairing",
++  "/system": "system",
+   "/sessions": "sessions",
+   "/analytics": "analytics",
+   "/models": "models",
+@@ -38,11 +43,12 @@
+   }
+   const plugin = pluginTabs.find((p) => p.path === normalized);
+   if (plugin) {
+-    return plugin.label;
++    const key = ({ "/kanban": "kanban", "/achievements": "achievements" } as const)[normalized as "/kanban" | "/achievements"];
++    return (key && t.app.nav[key]) || plugin.label;
+   }
+   const key = BUILTIN[normalized];
+-  if (key) {
+-    return t.app.nav[key];
++  if (key && t.app.nav[key]) {
++    return t.app.nav[key]!;
+   }
+   const literal = BUILTIN_LITERAL[normalized];
+   if (literal) {
+--- a/web/src/components/SharedMetricsConsentBanner.tsx
++++ b/web/src/components/SharedMetricsConsentBanner.tsx
+@@ -82,7 +82,7 @@
+     >
+       <BarChart3 className="h-3.5 w-3.5 shrink-0" />
+       <span className="font-semibold">{t.app.sharedMetricsTitle ?? "Help improve Hermes?"}</span>
+-      <span className="min-w-0 flex-1 opacity-80">
++      <span className="min-w-0 flex-1 basis-full sm:basis-auto opacity-80">
+         {failed
+           ? (t.app.sharedMetricsSaveFailed ?? "Couldn't save your choice")
+           : consent.reask

@@ -1,0 +1,37 @@
+test_source_without_provenance_is_rejected (test_workflow.BaselineTest.test_source_without_provenance_is_rejected) ... ok
+test_wrong_commit_and_unverified_archives_are_rejected (test_workflow.BaselineTest.test_wrong_commit_and_unverified_archives_are_rejected) ... ok
+test_original_and_shared_storage_readonly_and_exact_candidate (test_workflow.MountPolicyTest.test_original_and_shared_storage_readonly_and_exact_candidate) ... ok
+test_rejects_shared_git_metadata_and_overlapping_writable_paths (test_workflow.MountPolicyTest.test_rejects_shared_git_metadata_and_overlapping_writable_paths) ... ok
+test_accepted_history_does_not_expire_as_if_new_work_were_running (test_workflow.WorkflowTest.test_accepted_history_does_not_expire_as_if_new_work_were_running) ... ok
+test_altered_log_rejected (test_workflow.WorkflowTest.test_altered_log_rejected) ... ok
+test_builder_failure_never_releases_review (test_workflow.WorkflowTest.test_builder_failure_never_releases_review) ... ok
+test_candidate_mutation_revokes_acceptance (test_workflow.WorkflowTest.test_candidate_mutation_revokes_acceptance) ... ok
+test_configuration_refresh_preserves_custom_soul_and_provider_routes (test_workflow.WorkflowTest.test_configuration_refresh_preserves_custom_soul_and_provider_routes) ... ok
+test_controlled_repair_reuses_research_and_starts_unapproved (test_workflow.WorkflowTest.test_controlled_repair_reuses_research_and_starts_unapproved) ... ok
+test_default_off_and_no_approval_cannot_write (test_workflow.WorkflowTest.test_default_off_and_no_approval_cannot_write) ... ok
+test_existing_shell_invocation_uses_native_interpreter_and_job_key (test_workflow.WorkflowTest.test_existing_shell_invocation_uses_native_interpreter_and_job_key) ... ok
+test_failed_test_is_not_accepted (test_workflow.WorkflowTest.test_failed_test_is_not_accepted) ... ok
+test_global_time_run_and_unknown_cost_limits (test_workflow.WorkflowTest.test_global_time_run_and_unknown_cost_limits) ... ok
+test_idempotent_completed_execution_and_instances (test_workflow.WorkflowTest.test_idempotent_completed_execution_and_instances) ... ok
+test_irrecoverable_categories_require_human (test_workflow.WorkflowTest.test_irrecoverable_categories_require_human) ... ok
+test_missing_actual_changes_rejected (test_workflow.WorkflowTest.test_missing_actual_changes_rejected) ... ok
+test_missing_test_handoff_rejected (test_workflow.WorkflowTest.test_missing_test_handoff_rejected) ... ok
+test_native_crashed_worker_trips_existing_failure_limit (test_workflow.WorkflowTest.test_native_crashed_worker_trips_existing_failure_limit) ... ok
+test_native_dispatch_claim_recovery_and_duplicate_dispatch (test_workflow.WorkflowTest.test_native_dispatch_claim_recovery_and_duplicate_dispatch) ... ok
+test_native_docker_arguments_keep_mount_permissions (test_workflow.WorkflowTest.test_native_docker_arguments_keep_mount_permissions) ... ok
+test_native_done_cannot_forge_acceptance (test_workflow.WorkflowTest.test_native_done_cannot_forge_acceptance) ... ok
+test_native_timeout_and_worker_crash_do_not_auto_accept (test_workflow.WorkflowTest.test_native_timeout_and_worker_crash_do_not_auto_accept) ... ok
+test_partial_submission_recovers_without_duplicate_native_cards (test_workflow.WorkflowTest.test_partial_submission_recovers_without_duplicate_native_cards) ... ok
+test_pass_requires_explicit_gate_and_current_receipts (test_workflow.WorkflowTest.test_pass_requires_explicit_gate_and_current_receipts) ... ok
+test_repair_round_limit (test_workflow.WorkflowTest.test_repair_round_limit) ... ok
+test_repeated_failure_requires_human (test_workflow.WorkflowTest.test_repeated_failure_requires_human) ... ok
+test_reviewer_fail_is_not_accepted (test_workflow.WorkflowTest.test_reviewer_fail_is_not_accepted) ... ok
+test_scoped_profile_cwd_reaches_exact_mount_through_native_config (test_workflow.WorkflowTest.test_scoped_profile_cwd_reaches_exact_mount_through_native_config) ... ok
+test_verification_container_has_only_readonly_candidate (test_workflow.WorkflowTest.test_verification_container_has_only_readonly_candidate) ... ok
+test_verification_timeout_is_failure_and_cleans_only_own_container (test_workflow.WorkflowTest.test_verification_timeout_is_failure_and_cleans_only_own_container) ... ok
+test_wrong_commit_rejected (test_workflow.WorkflowTest.test_wrong_commit_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 32 tests in 18.230s
+
+OK

@@ -8,15 +8,20 @@ You are an implementation worker.
 4. Do not push, merge, force-push, alter remote settings, or modify credentials.
 5. For Git workspaces:
    - inspect the active branch;
-   - commit the completed change locally;
-   - include branch and commit SHA in completion metadata.
+   - do not create a Git commit unless the operator explicitly authorizes it;
+   - report source/candidate revisions, candidate content digest, and actual changed files.
 6. Run relevant unit, integration, type, lint, and build checks. Never claim a test
    passed unless you executed it and observed success.
 7. Completion metadata should include at least:
    - `changed_files`;
    - `verification`;
    - `branch`;
-   - `commit`;
+   - `execution_id`, `source_revision`, `candidate_revision`, `candidate_digest`;
    - `residual_risk`.
 8. Finish with `kanban_complete`; use `kanban_block` for missing access, ambiguous
    acceptance criteria, or an unrecoverable dependency. Do not exit with only prose.
+
+The original project and shared Kanban storage are read-only. Only an explicitly
+authorized, task-scoped candidate clone is writable. Never modify sibling task
+outputs. Test claims are handoffs; operator-generated verification receipts and
+the independent quality gate determine acceptance.

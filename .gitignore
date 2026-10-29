@@ -1,6 +1,7 @@
 deploy.env
 installed-commit.txt
 *.tar.gz
+!downloads/hermes-workflow-local-readonly-v0225-zh-CN.tar.gz
 
 # Local Codex workspace metadata
 .agents/

@@ -1,0 +1,4 @@
+name: workflow
+version: "0.1.0"
+description: "Hermes 中文工作流应用，支持人工确认与证据查看，默认只读。"
+kind: standalone

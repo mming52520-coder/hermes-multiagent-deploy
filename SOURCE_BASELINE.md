@@ -7,6 +7,23 @@ This deployment bundle was checked against:
 - Commit date: 2026-07-13
 - Deployment model: one Orchestrator gateway plus dispatcher-spawned Profile workers
 
+## P0 reproducibility contract
+
+The supported runtime remains v0.18.2 at the exact commit above. The installation
+wrapper now downloads that commit's installer, verifies its SHA-256
+`c2e4326c1660bd45f64321996eb15bda35e7a4649e32a310495a61972a2804c8`, and passes
+the upstream-supported `--commit` option. An existing installation is checked
+before API preflight, configuration generation, or service setup. A version
+string alone is insufficient: `scripts/hermes_baseline.py` requires a clean
+source checkout at that commit, or verifies every archived source file against
+the exact source archive (SHA-256
+`34f9eedb7215eb9768b6f8289d0284e01fa467c86228ac7e5b6054fc8698e628`).
+
+The old unpinned `hermes update` path is no longer used. See
+`docs/MULTIAGENT_WORKFLOW_P0.md` for explicit reinstall/upgrade/rollback policy.
+Neither installer nor upgrade/deployment services were executed during this
+offline change. Existing user installations remain unchanged.
+
 Compatibility decisions:
 
 1. `platform_toolsets` is written for current per-platform tool configuration.

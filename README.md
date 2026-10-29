@@ -1,5 +1,11 @@
 # Hermes 多 Agent（Packy + DeepSeek）一键部署手册
 
+> **网页应用**：CLI 现已封装为 Hermes Dashboard 的「工作流」页，默认只读，支持任务依赖、验收证据与人工受控操作。参见 [应用启动与安装说明](docs/WORKFLOW_APP.md)。原有 P0 限制仍保留。
+
+> **Linux 中文本地版（已有 Hermes v0.22.5）**：[下载接入包](downloads/hermes-workflow-local-readonly-v0225-zh-CN.tar.gz?raw=true) · [校验文件](downloads/hermes-workflow-local-readonly-v0225-zh-CN.tar.gz.sha256) · [安装说明](docs/LOCAL_HERMES_V0225.md) · [按钮与按键说明](docs/WORKFLOW_APP_BUTTONS_ZH.md)。包内含已构建前端，无需本机 npm 构建。**v0.22.5 目前仅适配只读界面，完整工作流写入仍关闭。** [查看中文界面](docs/images/workflow-desktop-zh.png)。
+
+> **P0 改造状态：PARTIAL_PASS；P1/P2 尚未启用。** 新版 `submit-feature.sh deploy.env "目标"` 保留参数形式，默认只建 triage 卡。Builder 原始项目挂载改为只读；写入需经操作员授权，使用独立候选副本。Kanban `done` 不再被视为交付接受。开始使用前阅读 [P0 报告与操作说明](docs/MULTIAGENT_WORKFLOW_P0.md) 和 [持续工作记忆/差距矩阵](docs/MULTIAGENT_WORKFLOW_UPGRADE_MEMORY.md)。下文保留历史部署流程；本次没有执行部署或升级。
+
 > 版本：v1.0 · 日期：2026-07-13
 > 原始 Word 版：[下载 Hermes多Agent_Packy_DeepSeek_一键部署操作手册_v1.0.docx](docs/Hermes多Agent_Packy_DeepSeek_一键部署操作手册_v1.0.docx)
 > 配套文档：[Hermes 多 Agent 使用手册](docs/Hermes多Agent_使用手册.md)
