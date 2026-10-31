@@ -26,6 +26,8 @@ ARCHIVE = Path(os.environ["HERMES_BASELINE_ARCHIVE"])
 
 class WorkflowWrites(unittest.TestCase):
     def setUp(self):
+        version = patch.object(wc, "CURRENT_WORKFLOW_VERSION", 1)
+        version.start(); self.addCleanup(version.stop)
         temporary = tempfile.TemporaryDirectory(prefix="hermes-workflow-v0225-")
         self.addCleanup(temporary.cleanup)
         self.directory = Path(temporary.name)
@@ -37,7 +39,7 @@ class WorkflowWrites(unittest.TestCase):
         patcher.start(); self.addCleanup(patcher.stop)
         self.project = self.directory / "project"
         wc.independent_clone(REPO, self.project, wc.git(REPO, "rev-parse", "HEAD"))
-        for role in wc.ROLES:
+        for role in wc.LEGACY_ROLES:
             tools = ["kanban", "memory", "skills"] if role == "orchestrator" else ["terminal", "file"]
             write_yaml(self.home / "profiles" / role / "config.yaml", {
                 "model": {"provider": "test-provider", "default": "offline-fixture"},
@@ -57,8 +59,37 @@ class WorkflowWrites(unittest.TestCase):
     def ready(self):
         return {"ready": True, "approved": True, "checks": []}
 
+    def test_stage_output_reads_successful_skill_views_from_native_worker_session(self):
+        from hermes_state import SessionDB
+
+        spec = importlib.util.spec_from_file_location("stage_output_api", REPO / "plugins/workflow/dashboard/plugin_api.py")
+        api = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(api)
+        self.workflow.start(self.execution, True)
+        tid = self.manifest["rounds"][0]["tasks"]["researcher"]
+        with runtime.connect_closing(board="default") as conn:
+            task = kb.get_task(conn, tid)
+            session = "synthetic-worker-session"
+            db = SessionDB(db_path=self.home / "profiles" / task.assignee / "state.db")
+            try:
+                db.create_session(session, "cli")
+                for success, name in ((True, "source-review"), (True, "source-review"), (False, "missing-skill")):
+                    db.append_message(session, "tool", tool_name="skill_view",
+                        content=json.dumps({"success": success, "name": name, "content": "private-transcript-body"}))
+            finally:
+                db.close()
+            kb.recompute_ready(conn)
+            self.assertIsNotNone(kb.claim_task(conn, tid))
+            kb.complete_task(conn, tid, result="Recorded research findings", metadata={"worker_session_id": session})
+            data = api.task_summary(conn, tid, include_output=True)
+            self.assertEqual(data["result"], "Recorded research findings")
+            self.assertEqual(data["skills_used"], ["source-review"])
+            self.assertTrue(data["skills_recorded"])
+            self.assertNotIn("private-transcript-body", json.dumps(data))
+            self.assertNotIn("result", api.task_summary(conn, tid))
+
     def test_submission_creates_four_native_triage_cards(self):
-        self.assertEqual(set(self.statuses()), set(wc.ROLES))
+        self.assertEqual(set(self.statuses()), set(wc.LEGACY_ROLES))
         self.assertEqual(set(self.statuses().values()), {"triage"})
         self.assertFalse(self.manifest["approved_write"])
         repeated = self.workflow.submit(self.manifest["objective"])
@@ -181,7 +212,8 @@ class WorkflowWrites(unittest.TestCase):
         app.include_router(api.router, prefix="/api/plugins/workflow")
         url = "/api/plugins/workflow/executions"
         client = TestClient(app)
-        with patch.object(web_server, "_SESSION_TOKEN", "synthetic-session"):
+        with patch.object(web_server, "_SESSION_TOKEN", "synthetic-session"), \
+             patch.object(api.core_module(), "CURRENT_WORKFLOW_VERSION", 1):
             self.assertEqual(client.post(url, json={"objective": "unauthorized"}).status_code, 401)
             client.headers.update({"X-Hermes-Session-Token": "synthetic-session", "X-Hermes-Workflow-Action": "1"})
             created = client.post(url, json={"objective": "HTTP synthetic development goal"})

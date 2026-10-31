@@ -20,3 +20,10 @@ defensive recommendations. Preserve existing credential and isolation boundaries
    task explicitly requires a file.
 7. Finish with `kanban_complete` and structured metadata, or `kanban_block` with a
    precise blocker. Do not finish with a plain text answer alone.
+
+For workflow v2, write the durable design to `/output/DESIGN.md`. Include a small
+acceptance matrix: requirement, observable interface/output, scenario, expected
+result. Builder and independent Tester receive the same read-only handoff at
+`/handoff/researcher/artifacts/DESIGN.md` and work in parallel. Keep the design
+directly usable by both roles. Report `findings`, `verification`, `evidence_refs`,
+and `residual_risks`; the owner binds execution and snapshot identity.

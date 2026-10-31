@@ -20,7 +20,7 @@ const { chromium } = require("playwright");
     await page.goto(`http://127.0.0.1:${info.port}/workflow`);
     const app = page.locator(".workflow-app");
     await app.locator("h1").waitFor({ timeout: 30000 });
-    assert.equal(await app.locator("h1").textContent(), "研发工作台");
+    assert.equal(await app.locator("h1").textContent(), "工作台");
     assert.equal(await page.evaluate(() => localStorage.getItem("hermes-locale")), "zh");
     assert.match(await page.locator("html").getAttribute("lang"), /^zh/);
     assert.equal(await page.getByRole("link", { name: "配置", exact: true }).count(), 1);

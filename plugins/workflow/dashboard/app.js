@@ -6,8 +6,66 @@
   const R = SDK.React, h = R.createElement;
   const { useState, useEffect } = R;
   const EN = {
+    "方案": "Plan",
+    "独立测试": "Independent testing",
+    "等待方案": "Waiting for the plan",
+    "用例已准备": "Tests prepared",
+    "测试通过": "Tests passed",
+    "查看测试结果": "Check test results",
+    "方案结果": "Plan results",
+    "测试结果": "Test results",
+    "测试记录": "Test records",
+    "批准并开始": "Approve and start",
+    "批准整改并执行": "Approve and run repair",
+    "继续执行": "Continue",
+    "继续执行当前任务。": "Continue the current task.",
+    "等待确认交付": "Awaiting delivery approval",
+    "等待确认需求": "Awaiting request approval",
+    "独立测试验收": "Independent acceptance tests",
+    "方案 → 开发与独立测试 → 独立审查": "Plan → Build and independent testing → Independent review",
+    "批准后自动开发、测试和审查，完成后由你确认交付。": "Approval starts development, testing and review. You confirm the final delivery.",
+    "任务列表": "Tasks",
+    "待验收": "Awaiting acceptance",
+    "新建任务": "New task",
+    "开发需求": "Development request",
+    "描述你想实现的功能": "Describe what you want to build",
+    "创建任务": "Create task",
+    "还没有任务": "No tasks yet",
+    "详细记录": "Details",
+    "收起记录": "Hide details",
+    "完整需求": "Full request",
+    "更多选项": "More options",
+    "确认需求": "Approve request",
+    "开始开发": "Start development",
+    "开始审查": "Start review",
+    "检查并交付": "Check and deliver",
+    "运行所需测试并确认本次交付。": "Run the required tests and accept this delivery.",
+    "确认交付": "Accept delivery",
+    "继续修改": "Request changes",
+    "修改意见": "Requested changes",
+    "确认本次需求。": "Approve this request.",
+    "开始后会调用模型并产生费用。": "Starting uses your models and incurs API charges.",
+    "开始独立审查。": "Start the independent review.",
+    "确认本次任务交付。": "Accept this delivery.",
+    "按修改意见继续开发。": "Continue development with the requested changes.",
+    "我已确认": "I confirm",
+    "任务已创建": "Task created",
+    "正在执行": "In progress",
+    "等待执行": "Waiting to start",
+    "请先配置模型": "Set up your models first",
+    "运行环境未就绪": "Runtime setup required",
+    "查看问题": "View issues",
+    "使用的技能": "Skills used",
     "统一模型配置": "Unified model settings",
-    "四个 Agent · 统一模型配置": "Four agents · Model settings",
+    "模型配置": "Model settings",
+    "调查结果": "Research results",
+    "开发结果": "Build results",
+    "审查结果": "Review results",
+    "汇总结果": "Summary results",
+    "使用的 Skill": "Skills used",
+    "尚无阶段结果。": "No results for this stage yet.",
+    "本次运行未调用 Skill。": "No skills were invoked in this run.",
+    "尚无 Skill 调用记录。": "Skill invocation history is not available yet.",
     "在此配置全部角色：选择厂商、导入 Key、选择模型，最后统一保存。": "Configure every role here: choose providers, import keys, select models, then save together.",
     "每个角色的厂商、密钥和模型独立保存。": "Each role keeps its own provider, key and model.",
     "获取全部模型": "Load all model lists",
@@ -305,8 +363,8 @@
     "接口或模型问题": "API or model issue",
     "描述目标、范围与可验证的验收标准…": "Describe the objective, scope and verifiable acceptance criteria…",
     "提交质量验收": "Submit for acceptance",
-    "搜索研发目标": "Search engineering objectives",
-    "搜索研发目标…": "Search objectives…",
+    "搜索任务": "Search tasks",
+    "搜索任务…": "Search tasks…",
     "操作员尚未启用任务提交": "The operator has not enabled task submission",
     "操作已完成，执行状态已更新。": "Operation completed. Execution status is updated.",
     "操作未完成，请由操作员查看后台诊断日志。": "Operation failed. Ask the operator to inspect backend diagnostics.",
@@ -366,7 +424,7 @@
     "登录状态已失效，请刷新页面或重新登录。": "Your session expired. Refresh the page or sign in again.",
     "目标已建立，任务等待审批。": "Objective created. Tasks are awaiting approval.",
     "相同问题重复出现，需要人工介入。": "The same failure occurred again. Operator intervention is required.",
-    "研发工作台": "Engineering workspace",
+    "工作台": "Workspace",
     "研发目标": "Engineering objective",
     "确认勾选框": "Confirmation checkbox",
     "确认操作": "Confirm",
@@ -419,19 +477,23 @@
   }
   const API = "/api/plugins/workflow";
   const ROLES = ["researcher", "builder", "reviewer", "orchestrator"];
+  const DEVELOPMENT_ROLES = ["researcher", "builder", "tester", "reviewer"];
   const NAMES = { researcher: "调查", builder: "开发", reviewer: "独立审查", orchestrator: "最终汇总" };
+  const DEVELOPMENT_NAMES = { researcher: "方案", builder: "开发", tester: "独立测试", reviewer: "独立审查" };
   const STATES = { approved: "已审批待启动", triage: "待审批", todo: "等待依赖", ready: "待执行", running: "执行中", blocked: "已阻塞", done: "已完成", archived: "已归档", missing: "记录缺失" };
   const ACCEPT = { ACCEPTED: "已验收", NOT_ACCEPTED: "尚未验收", READY_FOR_ACCEPTANCE: "可提交验收" };
   const OUTCOMES = { completed: "成功完成", blocked: "已阻塞", failed: "执行失败", crashed: "意外退出", spawn_failed: "启动失败", gave_up: "已停止重试", reclaimed: "已由恢复流程接管", review_requested: "等待审查", changes_requested: "需要修改", dependency_wait: "等待依赖", timeout: "执行超时", timed_out: "执行超时", cancelled: "已取消", interrupted: "已中断", abandoned: "已终止" };
   const KINDS = { implementation: "实现问题", test: "测试问题", environment: "环境问题", api_model: "接口或模型问题", permission: "权限问题", requirements: "需求问题" };
   const ACTIONS = {
-    approve: ["人工审批", "仅记录当前目标与轮次的人工授权，不会派发任务或调用模型。"],
-    launch: ["启动多 Agent", "按任务依赖启动原生多智能体执行，可能调用真实模型并产生费用。"],
-    "prepare-review": ["准备独立审查", "将冻结开发候选并释放审查任务。已发布的审查副本不能替换。"],
+    approve: ["确认需求", "确认本次需求。"],
+    advance: ["继续执行", "继续执行当前任务。"],
+    launch: ["开始开发", "开始后会调用模型并产生费用。"],
+    "prepare-review": ["开始审查", "开始独立审查。"],
     "verify-builder": ["验证开发结果", "在独立容器中运行操作员预设的验收命令，记录实际退出状态与日志。"],
     "verify-reviewer": ["验证审查副本", "针对相同候选的审查副本执行独立验证，记录可核对的证据。"],
-    accept: ["提交质量验收", "后端将重新核对版本、实际变更、两份验证记录和独立审查结果；不合格的执行会被拒绝。"],
-    repair: ["创建整改轮次", "仅针对当前独立审查失败创建开发、审查和汇总任务；新轮次仍需重新授权。"],
+    finish: ["检查并交付", "运行所需测试并确认本次交付。"],
+    accept: ["确认交付", "确认本次任务交付。"],
+    repair: ["继续修改", "按修改意见继续开发。"],
   };
   function cx() { return Array.from(arguments).filter(Boolean).join(" "); }
   function short(value) { return value ? String(value).slice(0, 10) : "尚未生成"; }
@@ -475,10 +537,18 @@
   function Badge(props) { return h("span", { className: cx("wf-badge", props.tone && "wf-" + props.tone) }, props.children); }
   function Empty(props) { return h("div", { className: "wf-empty" }, h("div", { className: "wf-empty-symbol", "aria-hidden": true }, "◇"), h("h3", null, props.title), h("p", null, props.children)); }
   function current(row) { return row && row.rounds.length ? row.rounds[row.rounds.length - 1].tasks : {}; }
+  function stageRoles(row) { return row?.workflow_version >= 2 ? DEVELOPMENT_ROLES : ROLES; }
   function finished(task) { return task && ["done", "archived"].includes(task.status); }
-  function needsAttention(row) { const tasks = current(row); return ROLES.some(role => !tasks[role] || ["blocked", "missing"].includes(tasks[role].status)); }
+  function taskTitle(value) { return value.split(/\r?\n/)[0]; }
+  function initialStage(row) {
+    const tasks = current(row);
+    const roles = stageRoles(row);
+    return roles.find(role => tasks[role]?.status === "running") || [...roles].reverse().find(role => finished(tasks[role])) || "researcher";
+  }
+  function needsAttention(row) { const tasks = current(row); return stageRoles(row).some(role => !tasks[role] || ["blocked", "missing"].includes(tasks[role].status)); }
   function state(row) {
-    const tasks = ROLES.map(role => current(row)[role]);
+    if (["REPAIR_REQUIRED", "HUMAN_REQUIRED"].includes(row?.workflow_state)) return "blocked";
+    const tasks = stageRoles(row).map(role => current(row)[role]);
     if (tasks.some(task => !task || task.status === "missing")) return "missing";
     if (tasks.some(task => task.status === "running")) return "running";
     if (tasks.some(task => task.status === "blocked")) return "blocked";
@@ -489,6 +559,15 @@
   function nextStep(detail) {
     const tasks = current(detail);
     if (detail.acceptance.status === "ACCEPTED") return { title: "交付已验收", text: "当前候选与验证记录已通过验收，可在证据页核对交付内容。", evidence: true };
+    if (detail.workflow_version >= 2) {
+      if (detail.workflow_state === "REPAIR_REQUIRED") return { title: "需要修改", action: "repair" };
+      if (detail.acceptance.status === "READY_FOR_ACCEPTANCE" || detail.workflow_state === "READY_FOR_ACCEPTANCE") return { title: "等待确认交付", action: "accept" };
+      if (!detail.approved_write) return { title: "等待确认需求", action: "approve" };
+      if (DEVELOPMENT_ROLES.every(role => tasks[role]?.status === "triage")) return { title: "等待执行", action: "advance" };
+      const blocked = DEVELOPMENT_ROLES.find(role => tasks[role]?.status === "blocked");
+      if (blocked) return { title: "处理阻塞任务", focus: blocked };
+      return { title: "正在执行" };
+    }
     if (ROLES.some(role => !tasks[role] || tasks[role].status === "missing")) return { title: "任务记录不完整", text: "当前任务记录缺失，请由操作员检查任务看板和执行记录。" };
     const blocked = ROLES.find(role => tasks[role].status === "blocked");
     if (blocked) return { title: "处理阻塞任务", text: "有阶段被阻塞，请先查看对应任务，再由操作员决定整改或人工处理。", focus: blocked };
@@ -500,20 +579,8 @@
     if (["reviewer", "orchestrator"].some(role => tasks[role].status === "triage")) return { title: "继续释放审查任务", text: "候选副本已冻结，仍有待审批的审查或汇总任务；可由操作员重试准备独立审查。", action: "prepare-review" };
     if (!finished(tasks.reviewer)) return { title: "等待独立审查", text: "独立审查使用冻结副本，完成后再核对最终汇总与交付证据。", action: tasks.reviewer.status === "running" ? null : "launch" };
     if (!finished(tasks.orchestrator)) return { title: "等待最终汇总", text: "等待汇总任务完成，再检查验证记录和审查结论。", action: tasks.orchestrator.status === "running" ? null : "launch" };
-    return { title: "核对交付证据", text: "四阶段任务已完成；请检查两份验证记录和审查结论，再提交质量验收。", evidence: true };
-  }
-
-  function Help(props) {
-    const ui = useText();
-    const browsing = [[ui("刷新"), ui("重新读取任务状态；不会启动任务。页面也会每 20 秒自动刷新。")], [ui("搜索研发目标"), ui("输入目标名称查找记录；“需要关注”仅显示阻塞或记录缺失的目标。")], [ui("四阶段卡片"), ui("点击调查、开发、独立审查或最终汇总，查看对应任务的运行结果。")], [ui("验收证据"), ui("查看开发与审查副本的验证结果、原始命令和日志。")], [ui("整改记录"), ui("查看失败分类、历史轮次，以及时间和尝试次数上限。")]];
-    const definitions = items => h("dl", null, items.map(([label, text]) => h(R.Fragment, { key: label }, h("dt", null, ui(label)), h("dd", null, ui(text)))));
-    return h("details", { className: "wf-help" }, h("summary", null, ui("使用说明与按键")),
-      h("p", null, props.writable ? ui("操作需要人工确认，并由后端核验条件。支持范围请查看安装说明。") : ui("当前为只读模式。灰色按钮表示操作员尚未开放写入。")),
-      h("div", { className: "wf-help-grid" },
-        h("section", null, h("h2", null, ui("浏览与查看")), definitions(browsing)),
-        h("section", null, h("h2", null, ui("按钮的作用")), definitions([[ui("新建目标"), ui("创建待审批计划，不会立即运行。只读时不可用。")], ...Object.values(ACTIONS)])),
-        h("section", null, h("h2", null, ui("键盘操作")), definitions([["Tab / Shift + Tab", ui("向后或向前移动焦点。")], [ui("Enter / 空格"), ui("在按钮或说明标题上确认、展开或收起；输入框保留正常输入行为。")], ["Esc", ui("关闭操作确认弹窗；操作处理中需等待完成。")], [ui("确认勾选框"), ui("执行操作前需要明确勾选，再点击“确认操作”；灰色按钮不能由键盘绕过。")]])),
-        h("section", null, h("h2", null, ui("怎样理解状态")), definitions([[ui("待审批"), ui("任务已登记，尚未获准执行。")], [ui("等待依赖"), ui("需要先完成前置任务。")], [ui("已阻塞"), ui("存在需要处理的问题，请查看详情。")], [ui("已完成 / 已验收"), ui("任务结束不代表交付合格；只有证据通过核对后才显示“已验收”。")], [ui("原始信息"), ui("版本号、任务编号、命令、路径及验证日志保留原文，便于核对。")]]))));
+    if (detail.acceptance.reason?.includes("Reviewer did not return PASS")) return { title: "需要修改", action: "repair" };
+    return { title: "核对交付证据", action: "finish" };
   }
 
   function ModelConnections({ execution, onConfigured }) {
@@ -524,14 +591,16 @@
     const [syncCurrent, setSyncCurrent] = useState(true), [refresh, setRefresh] = useState(0);
     const [bulkProvider, setBulkProvider] = useState("openrouter"), [bulkKey, setBulkKey] = useState("");
     const protocols = { chat_completions: "OpenAI Chat Completions", codex_responses: "OpenAI Responses", anthropic_messages: "Anthropic Messages", gemini: "Google Gemini 原生接口", native: "原生接口" };
-    const changed = ROLES.filter(role => drafts[role]?.dirty);
+    const roles = data ? Object.keys(data.roles) : DEVELOPMENT_ROLES;
+    const names = roles.includes("tester") ? DEVELOPMENT_NAMES : NAMES;
+    const changed = roles.filter(role => drafts[role]?.dirty);
     const working = saving || fetching.length > 0;
     useEffect(() => {
       let active = true;
-      request("/model-connection").then(value => {
+      request("/model-connection" + (execution ? "?execution=" + execution : "")).then(value => {
         if (!active) return;
         setData(value);
-        setDrafts(Object.fromEntries(ROLES.map(role => {
+        setDrafts(Object.fromEntries(Object.keys(value.roles).map(role => {
           const saved = value.roles[role] || {};
           const vendor = value.providers.find(item => item.id === saved.provider) || value.providers[0];
           const matches = saved.provider === vendor.id;
@@ -542,7 +611,7 @@
         })));
       }, () => { if (active) setError("模型配置读取失败，请重试。"); });
       return () => { active = false; };
-    }, [refresh]);
+    }, [refresh, execution]);
     function update(role, patch) {
       setDrafts(previous => ({ ...previous, [role]: { ...previous[role], ...patch, dirty: true, error: "" } }));
       setNotice("");
@@ -586,49 +655,46 @@
     }
     function applyShared() {
       const vendor = data.providers.find(item => item.id === bulkProvider);
-      setDrafts(previous => Object.fromEntries(ROLES.map(role => [role, { ...previous[role], provider: vendor.id,
+      setDrafts(previous => Object.fromEntries(roles.map(role => [role, { ...previous[role], provider: vendor.id,
         base_url: vendor.base_url, protocol: vendor.protocol === "native" || vendor.protocol === "gemini" ? "chat_completions" : vendor.protocol,
         model: vendor.default_model, key: bulkKey, models: [], imported: false, dirty: true, source: "", error: "" }])));
       setBulkKey(""); setNotice("");
     }
     return h("section", { className: "wf-model-settings", "aria-label": ui("统一模型配置") },
-      h("div", { className: "wf-section-heading" }, h("div", null, h("h2", null, ui("四个 Agent · 统一模型配置")),
-        h("p", { className: "wf-muted" }, ui("在此配置全部角色：选择厂商、导入 Key、选择模型，最后统一保存。"))),
-        h("span", { className: "wf-badge" }, ui("{0} / 4 已配置", ROLES.filter(role => data?.roles[role]?.has_key && data?.roles[role]?.model).length))),
+      h("div", { className: "wf-section-heading" }, h("div", null, h("h2", null, ui("模型配置"))),
+        h("span", { className: "wf-badge" }, ui("{0} / 4 已配置", roles.filter(role => data?.roles[role]?.has_key && data?.roles[role]?.model).length))),
       !data && h("p", { className: "wf-muted" }, ui("正在读取模型连接…")),
       !data && error && h("button", { className: "wf-button", onClick: () => { setError(""); setRefresh(value => value + 1); } }, ui("重试读取")),
       data && h("form", { className: "wf-model-unified", onSubmit: save },
         h("div", { className: "wf-model-toolbar" },
-          h("span", { className: "wf-muted" }, ui("每个角色的厂商、密钥和模型独立保存。")),
-          h("button", { type: "button", className: "wf-button", disabled: working, onClick: () => loadModels(ROLES) }, ui(fetching.length ? "正在获取模型…" : "获取全部模型"))),
-        h("div", { className: "wf-agent-rows" }, ROLES.map(role => {
+          h("button", { type: "button", className: "wf-button", disabled: working, onClick: () => loadModels(roles) }, ui(fetching.length ? "正在获取模型…" : "获取全部模型"))),
+        h("div", { className: "wf-agent-rows" }, roles.map(role => {
           const draft = drafts[role], vendor = data.providers.find(item => item.id === draft.provider);
           const busy = saving || fetching.includes(role);
           const reset = patch => update(role, { ...patch, model: "", models: [], imported: false, source: "" });
-          return h("article", { key: role, className: "wf-agent-row", "data-role": role, "aria-label": ui(NAMES[role]) },
-            h("div", { className: "wf-role-name" }, h("h3", null, ui(NAMES[role])), h("small", { className: draft.imported ? "wf-key-ready" : "wf-muted" }, ui(draft.imported ? "Key 已保存" : "需要填写 Key"))),
-            h("label", null, ui("模型厂商"), h("select", { value: draft.provider, disabled: busy, "aria-label": ui("{0}：模型厂商", ui(NAMES[role])), onChange: event => pickProvider(role, event.target.value) }, data.providers.map(item => h("option", { key: item.id, value: item.id }, ui(item.label)))),
-              vendor.regions && h("select", { value: draft.base_url, disabled: busy, "aria-label": ui("{0}：API 地区", ui(NAMES[role])), onChange: event => reset({ base_url: event.target.value }) }, vendor.regions.map(region => h("option", { key: region.base_url, value: region.base_url }, ui(region.label))))),
+          return h("article", { key: role, className: "wf-agent-row", "data-role": role, "aria-label": ui(names[role]) },
+            h("div", { className: "wf-role-name" }, h("h3", null, ui(names[role])), h("small", { className: draft.imported ? "wf-key-ready" : "wf-muted" }, ui(draft.imported ? "Key 已保存" : "需要填写 Key"))),
+            h("label", null, ui("模型厂商"), h("select", { value: draft.provider, disabled: busy, "aria-label": ui("{0}：模型厂商", ui(names[role])), onChange: event => pickProvider(role, event.target.value) }, data.providers.map(item => h("option", { key: item.id, value: item.id }, ui(item.label)))),
+              vendor.regions && h("select", { value: draft.base_url, disabled: busy, "aria-label": ui("{0}：API 地区", ui(names[role])), onChange: event => reset({ base_url: event.target.value }) }, vendor.regions.map(region => h("option", { key: region.base_url, value: region.base_url }, ui(region.label))))),
             h("label", null, ui("API Key"), h("input", { type: "password", autoComplete: "new-password", value: draft.key, disabled: busy,
-              "aria-label": ui("{0}：API Key", ui(NAMES[role])), placeholder: ui(draft.imported ? "已保存，留空沿用" : "输入所选厂商的 Key"), onInput: event => reset({ key: event.target.value }) })),
+              "aria-label": ui("{0}：API Key", ui(names[role])), placeholder: ui(draft.imported ? "已保存，留空沿用" : "输入所选厂商的 Key"), onInput: event => reset({ key: event.target.value }) })),
             h("label", null, ui("模型名称"), h("select", { value: draft.model, required: draft.dirty, disabled: busy || !draft.models.length && !draft.model,
-              "aria-label": ui("{0}：模型名称", ui(NAMES[role])), onChange: event => update(role, { model: event.target.value }) },
+              "aria-label": ui("{0}：模型名称", ui(names[role])), onChange: event => update(role, { model: event.target.value }) },
               h("option", { value: "" }, ui("导入 Key 后选择模型")),
               Array.from(new Set([...draft.models, ...(draft.model ? [draft.model] : [])])).map(model => h("option", { key: model, value: model }, model)))),
             h("button", { type: "button", className: "wf-button wf-role-load", disabled: busy, onClick: () => loadModels([role]) }, ui(fetching.includes(role) ? "获取中…" : "获取模型")),
             h("div", { className: "wf-role-extra" },
-              draft.source && h("span", { className: "wf-muted" }, ui(draft.source === "catalog" ? "厂商未返回实时目录，显示推荐模型。" : "已获取 {0} 个模型", draft.models.length)),
               draft.error && h("p", { className: "wf-alert", role: "alert" }, ui(draft.error)),
               h("details", { className: "wf-role-advanced", open: draft.provider === "custom" ? true : undefined },
-                h("summary", null, ui("高级设置：API 地址、协议与手动模型")),
+                h("summary", null, ui("更多选项")),
                 h("div", { className: "wf-role-advanced-fields" },
                   h("label", null, ui("API 地址"), h("input", { type: "url", value: draft.base_url, required: draft.dirty && draft.provider === "custom", disabled: busy,
-                    "aria-label": ui("{0}：API 地址", ui(NAMES[role])), onInput: event => reset({ base_url: event.target.value }) })),
+                    "aria-label": ui("{0}：API 地址", ui(names[role])), onInput: event => reset({ base_url: event.target.value }) })),
                   h("label", null, ui("API 协议"), draft.provider === "custom" ? h("select", { value: draft.protocol, disabled: busy,
-                    "aria-label": ui("{0}：API 协议", ui(NAMES[role])), onChange: event => reset({ protocol: event.target.value }) },
+                    "aria-label": ui("{0}：API 协议", ui(names[role])), onChange: event => reset({ protocol: event.target.value }) },
                     ["chat_completions", "codex_responses", "anthropic_messages"].map(id => h("option", { key: id, value: id }, protocols[id]))) : h("span", { className: "wf-protocol" }, ui(protocols[vendor.protocol] || "原生接口"))),
                   h("label", null, ui("手动模型编号"), h("input", { value: draft.model, disabled: busy,
-                    "aria-label": ui("{0}：手动模型编号", ui(NAMES[role])), onInput: event => update(role, { model: event.target.value }) }))))));
+                    "aria-label": ui("{0}：手动模型编号", ui(names[role])), onInput: event => update(role, { model: event.target.value }) }))))));
         })),
         h("details", { className: "wf-model-bulk" }, h("summary", null, ui("快捷操作：一套配置应用全部")),
           h("div", { className: "wf-model-bulk-fields" },
@@ -637,10 +703,22 @@
               "aria-label": ui("共用 API Key"), onInput: event => setBulkKey(event.target.value) })),
             h("button", { type: "button", className: "wf-button", disabled: working, onClick: applyShared }, ui("一套连接应用全部")))),
         h("div", { className: "wf-model-savebar" },
-          execution ? h("label", { className: "wf-check" }, h("input", { type: "checkbox", checked: syncCurrent, disabled: working, onChange: event => setSyncCurrent(event.target.checked) }), ui("同步到当前未启动目标；修改后需要重新审批。")) : h("p", { className: "wf-muted" }, ui("新目标将使用此连接；当前目标的配置不会改变。")),
+          execution ? h("label", { className: "wf-check" }, h("input", { type: "checkbox", checked: syncCurrent, disabled: working, onChange: event => setSyncCurrent(event.target.checked) }), ui("同步到当前未启动目标；修改后需要重新审批。")) : null,
           h("button", { type: "submit", className: "wf-button wf-primary", disabled: working || !changed.length || changed.some(role => !drafts[role].model) }, ui(saving ? "正在处理…" : "保存模型配置")))),
       error && h("p", { className: "wf-alert", role: "alert" }, ui(error)),
       notice && h("p", { className: "wf-notice", role: "status" }, ui(notice)));
+  }
+
+  function TaskResults({ role, task, development }) {
+    const ui = useText();
+    const titles = { researcher: development ? "方案结果" : "调查结果", builder: "开发结果", tester: "测试结果", reviewer: "审查结果", orchestrator: "汇总结果" };
+    return h("section", { className: "wf-task-results", "aria-label": ui(titles[role]) },
+      h("h3", null, ui(titles[role])),
+      h("div", { className: "wf-result-text" }, task?.result || ui(task?.status === "running" ? "正在执行" : "等待执行")),
+      task?.verification && h("details", { className: "wf-task-verification" }, h("summary", null, ui("测试记录")),
+        h("pre", null, typeof task.verification === "string" ? task.verification : JSON.stringify(task.verification, null, 2))),
+      !!task?.skills_used?.length && h("div", { className: "wf-skills-used" }, h("h4", null, ui("使用的技能")),
+        h("ul", null, task.skills_used.map(name => h("li", { key: name }, name)))));
   }
 
   function App() {
@@ -649,7 +727,8 @@
     const formatDate = value => date(value, locale);
     const [meta, setMeta] = useState(null), [rows, setRows] = useState(null), [selected, setSelected] = useState(null);
     const [snapshotDetail, setDetail] = useState(null), [tab, setTab] = useState("overview"), [focus, setFocus] = useState("researcher");
-    const [query, setQuery] = useState(""), [attention, setAttention] = useState(false), [error, setError] = useState("");
+    const [query, setQuery] = useState(""), [error, setError] = useState("");
+    const [settingsOpen, setSettingsOpen] = useState(false), [showDetails, setShowDetails] = useState(false);
     const [busy, setBusy] = useState(false), [dialog, setDialog] = useState(null), [objective, setObjective] = useState("");
     const [instance, setInstance] = useState(""), [ack, setAck] = useState(false), [kind, setKind] = useState("implementation"), [reason, setReason] = useState("");
     const [proof, setProof] = useState(null), [notice, setNotice] = useState("");
@@ -676,14 +755,15 @@
           setMeta(info); setRows(data.executions);
           const target = data.executions.some(row => row.execution_id === selected) ? selected : data.executions[0]?.execution_id || null;
           if (target !== selected) {
-            setSelected(target); setDetail(null); setProof(null); setUpdatedAt(null); setTab("overview");
+            setSelected(target); setFocus(initialStage(data.executions.find(row => row.execution_id === target)));
+            setDetail(null); setProof(null); setUpdatedAt(null); setTab("overview"); setShowDetails(false);
             return;
           }
           const nextDetail = target ? await request("/executions/" + target) : null;
           let nextProof = null;
           if (nextDetail && tab === "evidence") {
             const number = nextDetail.rounds.at(-1).number;
-            nextProof = await Promise.all(["builder", "reviewer"].map(role => request(`/executions/${target}/evidence/${number}/${role}`)));
+            nextProof = await Promise.all((nextDetail.workflow_version >= 2 ? ["platform"] : ["builder", "reviewer"]).map(role => request(`/executions/${target}/evidence/${number}/${role}`)));
           }
           if (active) { setDetail(nextDetail); setProof(nextProof); setUpdatedAt(Date.now()); }
         } catch (error) {
@@ -724,22 +804,47 @@
       try {
         if (dialog === "new") {
           const result = await post("/executions", { objective, instance });
-          setSelected(result.execution_id); setTab("overview"); setDetail(null); setProof(null); setObjective(""); setInstance("");
-          setNotice(ui("目标已建立，任务等待审批。"));
+          setSelected(result.execution_id); setTab("overview"); setFocus("researcher"); setShowDetails(false);
+          setDetail(null); setProof(null); setObjective(""); setInstance("");
+          setNotice(ui("任务已创建"));
         } else {
-          const result = await post(`/executions/${dialogExecution}/actions/${dialog}`, { confirmed: ack, round_number: dialogTarget.round_number, kind, reason });
+          const actionBody = { confirmed: ack, round_number: dialogTarget.round_number, kind, reason };
+          let result;
+          if (dialog === "finish") {
+            const receipts = await Promise.all(["builder", "reviewer"].map(role => request(`/executions/${dialogExecution}/evidence/${dialogTarget.round_number}/${role}`)));
+            for (const [index, role] of ["builder", "reviewer"].entries()) {
+              const item = receipts[index];
+              if (!(item.available && item.log_matches && item.receipt.status === "PASS" && item.receipt.candidate_digest === dialogTarget.candidate_digest)) {
+                await post(`/executions/${dialogExecution}/actions/verify-${role}`, actionBody);
+              }
+            }
+            result = await post(`/executions/${dialogExecution}/actions/accept`, actionBody);
+          } else if (dialog === "repair" && dialogTarget.workflow_version >= 2) {
+            result = await post(`/executions/${dialogExecution}/actions/repair`, actionBody);
+            await post(`/executions/${dialogExecution}/actions/approve`, { confirmed: true, round_number: result.round_number });
+          } else {
+            result = await post(`/executions/${dialogExecution}/actions/${dialog}`, actionBody);
+          }
           setSelected(dialogExecution);
-          setNotice(dialog === "launch" ? (result.dispatch?.spawned?.length ? ui("已派发 {0} 个任务，后续阶段按依赖执行。", result.dispatch.spawned.length) : ui("调度请求已处理，请查看任务状态；没有把等待资源当作执行成功。")) : ui("操作已完成，执行状态已更新。"));
+          setNotice(dialog === "launch" ? ui(result.dispatch?.spawned?.length ? "正在执行" : "等待执行") : ui("已完成"));
         }
         setDialog(null); setAck(false); setReason("");
       } catch (e) { setError(message(e)); } finally { setBusy(false); reload(); }
     }
     const writable = !!meta?.actions_enabled;
     const canOperate = writable && !busy && !refreshing && !readError && updatedAt !== null && (!selected || !!detail);
-    const visible = (rows || []).filter(row => row.objective.toLowerCase().includes(query.trim().toLowerCase()) && (!attention || needsAttention(row)));
+    const visible = (rows || []).filter(row => row.objective.toLowerCase().includes(query.trim().toLowerCase()));
     const tasks = current(detail), activeTask = tasks[focus];
-    const stageLabel = role => detail?.approved_write && tasks[role]?.status === "triage" ? ui(["researcher", "builder"].includes(role) ? "待启动" : "待准备审查") : ui(STATES[tasks[role]?.status]) || ui("记录缺失");
-    const metrics = rows === null ? ["—", "—", "—"] : [rows.length, rows.reduce((n, row) => n + Object.values(current(row)).filter(t => t.status === "running").length, 0), rows.filter(needsAttention).length];
+    const development = detail?.workflow_version >= 2, roles = stageRoles(detail);
+    const names = development ? DEVELOPMENT_NAMES : NAMES;
+    const stageLabel = role => {
+      if (development && role === "tester") {
+        if (detail.workflow_state === "REPAIR_REQUIRED") return ui("查看测试结果");
+        if (tasks.tester?.status === "triage") return ui("等待方案");
+        if (finished(tasks.tester)) return ui(["RUNNING_REVIEW", "READY_FOR_ACCEPTANCE", "ACCEPTED"].includes(detail.workflow_state) ? "测试通过" : "用例已准备");
+      }
+      return detail?.approved_write && tasks[role]?.status === "triage" ? ui(["researcher", "builder"].includes(role) ? "待启动" : "待准备审查") : ui(STATES[tasks[role]?.status]) || ui("记录缺失");
+    };
     const readiness = detail?.readiness || meta?.readiness;
     function actionBlocked(key) {
       if (!canOperate) return !writable ? ui("当前为只读模式") : ui("同步完成前暂不可操作");
@@ -749,60 +854,125 @@
       return "";
     }
     const step = detail ? nextStep(detail) : null;
-    const completed = ROLES.filter(role => finished(tasks[role])).length;
-    function openAction(key) { setAck(false); setDialogExecution(selected); setDialogTarget({ objective: detail.objective, revision: detail.source_revision, round_number: detail.rounds.at(-1).number }); setError(""); setDialog(key); }
+    const completed = roles.filter(role => finished(tasks[role])).length;
+    const actionLabel = key => development && key === "approve" ? "批准并开始" : development && key === "repair" ? "批准整改并执行" : ACTIONS[key][0];
+    function openAction(key) { setAck(false); setDialogExecution(selected); setDialogTarget({ workflow_version: detail.workflow_version, objective: detail.objective, revision: detail.source_revision, candidate_digest: detail.candidate_digest, round_number: detail.rounds.at(-1).number }); setError(""); setDialog(key); }
     function focusStage(role) { setFocus(role); document.querySelector(".workflow-app .wf-node-" + role)?.focus(); }
-    const actionButton = key => h("button", { key, className: "wf-action", disabled: !!actionBlocked(key), title: actionBlocked(key) || ui(ACTIONS[key][1]), onClick: () => openAction(key) }, ui(ACTIONS[key][0]), h("span", { "aria-hidden": true }, "↗"));
+    const actionButton = key => h("button", { key, className: "wf-button", disabled: !!actionBlocked(key), title: actionBlocked(key) || ui(ACTIONS[key][1]), onClick: () => openAction(key) }, ui(actionLabel(key)));
 
-    return h("main", { className: "workflow-app" },
-      h("header", { className: "wf-header" }, h("div", null, h("div", { className: "wf-eyebrow" }, ui("Hermes · 多智能体工作流")), h("h1", null, ui("研发工作台")), h("p", null, ui("从研发目标到交付证据，每一步都可追溯。"))),
-        h("div", { className: "wf-header-actions" }, h(Badge, { tone: writable ? "green" : "neutral" }, h("i", null), writable ? ui("人工受控") : ui("只读模式")), h("button", { className: "wf-button", disabled: busy || refreshing, onClick: reload, "aria-label": ui("刷新工作流") }, ui("↻ 刷新")), h("button", { className: "wf-button wf-primary", disabled: !canOperate, onClick: () => setDialog("new"), title: !writable ? ui("操作员尚未启用任务提交") : !canOperate ? ui("同步完成前暂不可操作") : ui("创建待审批计划") }, ui("＋ 新建目标")))),
-      h("div", { className: cx("wf-sync", readError && "wf-sync-error"), role: "status", "aria-live": "polite" },
-        h("span", null, h("i", { "aria-hidden": true }), readError ? ui(updatedAt ? "同步失败，正在显示上次成功读取的状态。" : "同步失败，尚无可用状态。") + " " + ui(readError) : refreshing ? ui("正在同步状态…") : ui("状态已同步")),
-        h("span", { className: "wf-sync-meta" }, updatedAt ? h("time", { dateTime: new Date(updatedAt).toISOString() }, ui("上次同步 {0}", new Intl.DateTimeFormat(locale === "en" ? "en" : "zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(updatedAt))) : ui("尚未同步"), readError && h("button", { type: "button", className: "wf-button", disabled: busy || refreshing, onClick: reload }, ui("重新读取")))),
-      writable && meta?.model_connections_supported && h(ModelConnections, { execution: detail && Object.values(current(detail)).length === 4 && Object.values(current(detail)).every(task => task.status === "triage") ? selected : "", onConfigured: reload }),
-      writable && readiness && h("details", { className: "wf-readiness", "aria-label": ui("执行准备") },
-        h("summary", { className: "wf-section-heading" }, h("h2", null, ui("创建目标 → 人工审批 → 启动执行")), h(Badge, { tone: readiness.ready ? "green" : "amber" }, readiness.ready ? ui("已就绪") : ui("{0} 项待完成", readiness.checks.filter(check => !check.ready).length))),
-        h("p", { className: "wf-muted" }, ui("可以先创建目标和审批；启动前需要完成以下准备。")),
-        h("p", { className: "wf-muted" }, ui("项目：{0} · 看板：{1}", meta.project_name || "—", meta.board || "—")),
-        h("ul", { className: "wf-readiness-list" }, readiness.checks.map(check => h("li", { key: check.code, className: check.ready ? "ready" : "pending" },
-          h("span", { className: "wf-readiness-dot", "aria-hidden": true }), h("div", null, h("strong", null, ui(NAMES[check.code] || check.label)), h("span", null, ui(check.detail)), check.revision && h("code", null, check.revision), check.profile && h("code", null, check.profile), check.model && h("code", null, check.provider + " / " + check.model)), h("small", null, ui(check.ready ? "已就绪" : "未就绪"))))),
-        h("div", { className: "wf-next-actions" }, h("a", { href: "/profiles", className: "wf-button" }, ui("配置角色和模型")), h("a", { href: "/system", className: "wf-button" }, ui("系统设置")))),
-      h("div", { className: "wf-boundary" }, h("span", { className: "wf-status-dot" }), h("strong", null, ui("安全验证 · 部分通过")), h("span", null, ui("费用硬限额与真实执行验证尚未完成；保持人工审批。"))),
-      h(Help, { writable }),
-      error && h("div", { className: "wf-alert", role: "alert" }, h("span", null, ui(error)), h("button", { onClick: () => setError(""), "aria-label": ui("关闭错误") }, "×")),
-      notice && h("div", { className: "wf-notice", role: "status" }, ui(notice), h("button", { onClick: () => setNotice(""), "aria-label": ui("关闭提示") }, "×")),
-      h("section", { className: "wf-metrics", "aria-label": ui("工作流统计") }, [ui("执行目标"), ui("运行中的任务"), ui("需要关注")].map((label, i) => h("div", { className: "wf-metric", key: label }, h("span", null, label), h("strong", null, metrics[i]), h("small", null, [ui("当前项目的执行记录"), ui("由 Hermes 统一派发"), ui("阻塞或缺失的任务")][i])))),
+    const needsModels = readiness?.checks?.some(check => roles.includes(check.code) && !check.ready);
+    const needsSetup = (step?.action === "launch" || development && ["approve", "advance"].includes(step?.action)) && !readiness?.ready;
+    function showRecords(nextTab = "overview") { setShowDetails(true); setProof(null); setTab(nextTab); }
+    const newTaskButton = h("button", { className: "wf-button wf-primary", disabled: !canOperate,
+      onClick: () => { setError(""); setDialog("new"); } }, ui("新建任务"));
+
+    return h("main", { className: "workflow-app wf-client" },
+      h("header", { className: "wf-header" }, h("h1", null, ui("工作台")),
+        h("div", { className: "wf-header-actions" },
+          writable && meta?.model_connections_supported && h("button", { className: "wf-button", "aria-expanded": settingsOpen,
+            "aria-controls": "wf-model-settings", onClick: () => setSettingsOpen(value => !value) }, ui("模型配置")),
+          !!rows?.length && newTaskButton)),
+      readError && h("div", { className: "wf-sync wf-sync-error", role: "alert" },
+        h("span", null, ui(readError)), h("button", { className: "wf-button", disabled: busy || refreshing, onClick: reload }, ui("重新读取"))),
+      error && !dialog && h("div", { className: "wf-alert", role: "alert" }, ui(error)),
+      notice && h("div", { className: "wf-notice", role: "status" }, ui(notice),
+        h("button", { onClick: () => setNotice(""), "aria-label": ui("关闭提示") }, "×")),
+      writable && meta?.model_connections_supported && h("div", { id: "wf-model-settings", hidden: !settingsOpen },
+        h(ModelConnections, { execution: detail && Object.values(tasks).length === 4 && Object.values(tasks).every(task => task.status === "triage") ? selected : "",
+          onConfigured: () => { setSettingsOpen(false); reload(); } })),
       h("div", { className: "wf-workspace" },
-        h("aside", { className: "wf-executions" }, h("div", { className: "wf-section-heading" }, h("h2", null, ui("执行目标")), h("span", null, rows?.length || 0)),
-          h("input", { className: "wf-search", placeholder: ui("搜索研发目标…"), value: query, onChange: e => setQuery(e.target.value), "aria-label": ui("搜索研发目标") }),
-          h("div", { className: "wf-filters" }, h("button", { className: !attention ? "active" : "", "aria-pressed": !attention, onClick: () => setAttention(false) }, ui("全部")), h("button", { className: attention ? "active" : "", "aria-pressed": attention, onClick: () => setAttention(true) }, ui("需要关注"))),
-          rows === null ? (readError ? h(Empty, { title: ui("暂时无法读取执行列表") }, ui("保留目标选择，刷新后重新核验。")) : h("p", { className: "wf-loading" }, ui("正在读取执行记录…"))) : visible.length ? visible.map(row => h("button", { key: row.execution_id, className: cx("wf-execution", selected === row.execution_id && "selected"), "aria-pressed": selected === row.execution_id, onClick: () => { if (selected === row.execution_id) return; setError(""); setReadError(""); setSelected(row.execution_id); setDetail(null); setProof(null); setUpdatedAt(null); setTab("overview"); } },
-            h("div", { className: "wf-execution-top" }, h(Badge, { tone: state(row) === "running" ? "green" : state(row) === "blocked" ? "amber" : "neutral" }, ui(STATES[state(row)])), h("span", null, formatDate(row.created_at))),
-            h("h3", null, row.objective), h("div", { className: "wf-execution-meta" }, h("code", null, ui(short(row.source_revision))), h("span", null, ui("第 {0} 轮", (row.rounds.at(-1)?.number || 0) + 1))))) : h(Empty, { title: query || attention ? ui("没有匹配的目标") : ui("还没有执行记录") }, ui("已有终端执行记录会自动显示在这里。"))),
-        h("section", { className: "wf-detail", "aria-label": ui("执行详情") }, !selected ? h(Empty, { title: ui("把下一步，放在清晰的计划里。") }, writable ? ui("创建研发目标后，在这里查看任务依赖与执行证据。") : ui("当前只读。启用受控提交后，可以建立新的待审批目标。")) : !detail ? (readError ? h(Empty, { title: ui("暂时无法读取执行详情") }, ui("保留目标选择，刷新后重新核验。")) : h("div", { className: "wf-loading" }, ui("正在核验执行状态与证据…"))) : h(R.Fragment, null,
-          h("div", { className: "wf-detail-header" }, h("div", { className: "wf-eyebrow" }, (detail.board === "default" ? ui("默认看板") : detail.board) + ui(" / 执行编号 ") + detail.execution_id.slice(0, 8)), h("div", { className: "wf-title-line" }, h("h2", null, detail.objective), h(Badge, { tone: detail.acceptance.status === "ACCEPTED" ? "green" : "amber" }, ui(ACCEPT[detail.acceptance.status]))), h("p", null, ui("创建于 ") + formatDate(detail.created_at), " · ", detail.approved_write ? ui("已授权候选目录写入") : ui("尚未授权写入"))),
-          h("nav", { className: "wf-tabs", "aria-label": ui("执行详情页签") }, [["overview", ui("执行概览")], ["evidence", ui("验收证据")], ["repairs", ui("整改记录")]].map(([key, label]) => h("button", { key, className: tab === key ? "active" : "", "aria-pressed": tab === key, onClick: () => { if (key === tab) return; setProof(null); setTab(key); } }, label))),
-          tab === "overview" && h("div", { className: "wf-content" }, h("div", { className: "wf-section-heading" }, h("h3", null, ui("任务依赖")), h("span", null, ui("第 {0} 轮 · 4 个阶段", detail.rounds.at(-1).number + 1))),
-            h("section", { className: "wf-next-step", "aria-label": ui("下一步") },
-              h("div", null, h("span", { className: "wf-eyebrow" }, ui("下一步")), h("h3", null, ui(step.title)), h("p", null, ui(step.text)), h("small", null, ui(writable ? "建议基于当前状态，具体操作仍会重新核验。" : "当前只读，可查看进度和证据；执行操作需由操作员授权。"))),
-              h("div", { className: "wf-next-actions" },
-                step.focus && h("button", { className: "wf-button", onClick: () => focusStage(step.focus) }, ui("查看阻塞阶段")),
-                step.evidence && h("button", { className: "wf-button", onClick: () => { setProof(null); setTab("evidence"); } }, ui("查看验收证据")),
-                step.action && h("button", { className: "wf-button wf-primary", disabled: !!actionBlocked(step.action), title: actionBlocked(step.action) || ui(ACTIONS[step.action][1]), onClick: () => openAction(step.action) }, ui(ACTIONS[step.action][0])))),
-            h("div", { className: "wf-progress" }, h("div", null, h("span", null, ui("{0} / 4 个阶段完成", completed)), h("small", null, ui("阶段完成不代表质量验收通过。"))), h("progress", { "aria-label": ui("阶段完成进度"), max: 4, value: completed })),
-            h("div", { className: "wf-dag", "aria-label": ui("调查 → 开发 → 独立审查 → 最终汇总") }, ROLES.map((role, i) => h("button", { key: role, className: cx("wf-node", "wf-node-" + role, "wf-state-" + (tasks[role]?.status || "missing"), focus === role && "focused"), "aria-pressed": focus === role, onClick: () => setFocus(role) }, h("span", { className: "wf-avatar" }, [ui("调"), ui("开"), ui("审"), ui("汇")][i]), h("strong", null, ui(NAMES[role])), h("small", null, stageLabel(role))))),
-            h("div", { className: "wf-task-info" }, h("div", null, h("span", { className: "wf-label" }, ui(NAMES[focus]) + ui("任务")), h("code", null, activeTask?.id || "—")), h("div", null, h("span", { className: "wf-label" }, ui("最近运行")), h("strong", null, activeTask?.outcome ? (ui(OUTCOMES[activeTask.outcome]) || ui("其他运行结果")) : ui("尚未运行"))), h("div", null, h("span", { className: "wf-label" }, ui("角色")), h("span", null, ui(NAMES[focus])), h("code", null, activeTask?.assignee || ui("尚未指派")))),
-            h("div", { className: "wf-bottom-grid" }, h("div", { className: "wf-panel" }, h("h3", null, ui("交付检查")), h("p", { className: "wf-gate-reason" }, detail.acceptance.reason ? ui(message(detail.acceptance.reason)) : ui("当前版本、候选与验证证据已核对。")), h("dl", null, h("dt", null, ui("源版本")), h("dd", null, h("code", null, ui(short(detail.source_revision)))), h("dt", null, ui("候选版本")), h("dd", null, h("code", null, ui(short(detail.candidate_revision)))), h("dt", null, ui("实际模型接口费用")), h("dd", null, ui("未获取")))),
-              h("div", { className: "wf-panel" }, h("div", { className: "wf-section-heading" }, h("h3", null, ui("人工操作")), !writable && h("span", null, ui("只读"))), h("div", { className: "wf-actions" }, Object.keys(ACTIONS).map(actionButton)), h("p", { className: "wf-footnote" }, ui("每次操作都由后端核验条件，任务完成不等于交付验收。"))))),
-          tab === "evidence" && h("div", { className: "wf-content" }, h("h3", null, ui("独立验证记录")), h("p", { className: "wf-muted" }, ui("由操作员运行预设验收命令后生成，记录与当前候选绑定。")), !proof ? h("p", null, ui(readError ? "证据读取未完成，请刷新后重试。" : "正在读取证据…")) : proof.map((item, index) => h("article", { className: "wf-proof", key: index }, h("div", { className: "wf-section-heading" }, h("h3", null, index === 0 ? ui("开发结果验证") : ui("审查副本验证")), h(Badge, { tone: item.available && item.receipt.status === "PASS" && item.log_matches ? "green" : "neutral" }, item.available ? (item.log_matches ? (item.receipt.status === "PASS" ? ui("通过") : ui("未通过")) : ui("日志不一致")) : ui("尚无证据"))), item.available && h(R.Fragment, null, h("p", null, ui("退出码 "), h("code", null, item.receipt.exit_code), ui(" · 日志校验 "), item.log_matches ? ui("一致") : ui("不一致")), h("pre", { className: "wf-command" }, item.receipt.command), h("details", null, h("summary", null, ui("查看验证日志（最近 16 千字节）")), h("pre", { className: "wf-log" }, item.log_tail))))), h("h3", null, ui("候选变更")), h("code", { className: "wf-digest" }, detail.candidate_digest || ui("候选尚未冻结")), h("ul", { className: "wf-files" }, detail.changed_files.map(file => h("li", { key: file }, h("code", null, file))))),
-          tab === "repairs" && h("div", { className: "wf-content" }, h("h3", null, ui("整改与预算")), h("div", { className: "wf-budget" }, h("span", null, ui("整改上限 "), h("strong", null, detail.budget.max_rounds), ui(" 轮")), h("span", null, ui("执行时间 "), h("strong", null, Math.round(detail.budget.max_seconds / 60)), ui(" 分钟")), h("span", null, ui("任务尝试 "), h("strong", null, detail.budget.max_runs), ui(" 次"))), detail.failures.length ? detail.failures.map((failure, i) => h("article", { className: "wf-failure", key: i }, h(Badge, { tone: "amber" }, ui(KINDS[failure.kind]) || ui("其他问题")), h("h4", null, failure.reason), h("small", null, formatDate(failure.at)))) : h(Empty, { title: ui("暂无整改记录") }, ui("独立审查未通过时，由操作员分类处理。重复失败与预算超限会转交人工。")))
-        ))),
-      h("footer", { className: "wf-footer" }, h("span", null, ui("Hermes 工作流")), h("span", null, ui("复用原生任务看板 · 默认人工受控 · 不自动提交或部署"))),
-      dialog && h("div", { className: "wf-modal-backdrop", onClick: event => { if (event.target === event.currentTarget && !busy) setDialog(null); } }, h("form", { className: "wf-modal", role: "dialog", "aria-modal": true, "aria-label": dialog === "new" ? ui("新建研发目标") : ui(ACTIONS[dialog][0]), onSubmit: execute },
-        h("h2", null, dialog === "new" ? ui("新建研发目标") : ui(ACTIONS[dialog][0])), dialog !== "new" && h("div", { className: "wf-confirm-target" }, h("strong", null, dialogTarget.objective), h("small", null, ui("源版本 {0} · 第 {1} 轮", short(dialogTarget.revision), dialogTarget.round_number + 1))), dialog === "new" ? h(R.Fragment, null, h("label", null, ui("研发目标"), h("textarea", { required: true, maxLength: 4000, rows: 4, value: objective, onChange: e => setObjective(e.target.value), placeholder: ui("描述目标、范围与可验证的验收标准…") })), h("label", null, ui("执行实例名（可选）"), h("input", { maxLength: 128, value: instance, onChange: e => setInstance(e.target.value), placeholder: ui("留空可复用同一版本的已有执行") })), h("p", { className: "wf-muted" }, ui("只创建待审批任务，不会立即派发写入。"))) : h(R.Fragment, null, h("p", null, ui(ACTIONS[dialog][1])), h("code", { className: "wf-confirm-id" }, dialogExecution), dialog === "repair" && h(R.Fragment, null, h("label", null, ui("失败类型"), h("select", { value: kind, onChange: e => setKind(e.target.value) }, [["implementation", ui("实现错误")], ["test", ui("测试错误")], ["environment", ui("环境错误（需人工）")], ["api_model", ui("接口或模型错误（需人工）")], ["permission", ui("权限错误（需人工）")], ["requirements", ui("需求不明确（需人工）")]].map(([value, label]) => h("option", { value, key: value }, label)))), h("label", null, ui("整改原因"), h("textarea", { required: true, maxLength: 2000, rows: 3, value: reason, onChange: e => setReason(e.target.value) }))), h("label", { className: "wf-check" }, h("input", { type: "checkbox", checked: ack, onChange: e => setAck(e.target.checked) }), ui("我已确认本次操作及其影响范围"))),
-        error && h("p", { className: "wf-alert", role: "alert" }, ui(error)), h("div", { className: "wf-modal-actions" }, h("button", { type: "button", className: "wf-button", disabled: busy, onClick: () => setDialog(null) }, ui("取消")), h("button", { type: "submit", className: "wf-button wf-primary", disabled: !canOperate || (dialog !== "new" && (!ack || !!actionBlocked(dialog))) }, busy ? ui("正在处理…") : dialog === "new" ? ui("创建待审批目标") : ui("确认操作")))))
-    );
+        h("aside", { className: "wf-executions" },
+          h("div", { className: "wf-section-heading" }, h("h2", null, ui("任务列表"))),
+          !!rows?.length && h("input", { className: "wf-search", placeholder: ui("搜索任务…"), value: query,
+            onChange: event => setQuery(event.target.value), "aria-label": ui("搜索任务") }),
+          rows === null ? h("p", { className: "wf-loading" }, ui(readError ? "暂时无法读取执行列表" : "正在读取执行记录…"))
+            : visible.length ? visible.map(row => h("button", { key: row.execution_id,
+              className: cx("wf-execution", selected === row.execution_id && "selected"), "aria-pressed": selected === row.execution_id,
+              title: taskTitle(row.objective),
+              onClick: () => {
+                if (selected === row.execution_id) return;
+                setError(""); setReadError(""); setSelected(row.execution_id); setFocus(initialStage(row));
+                setDetail(null); setProof(null); setUpdatedAt(null); setTab("overview"); setShowDetails(false);
+              } },
+              h("h3", null, taskTitle(row.objective)),
+              h(Badge, { tone: needsAttention(row) ? "amber" : state(row) === "running" ? "green" : "neutral" },
+                ui(needsAttention(row) ? "需要关注" : STATES[state(row)]))))
+            : h("p", { className: "wf-muted" }, ui(query ? "没有匹配的目标" : "还没有任务"))),
+        h("section", { className: "wf-detail", "aria-label": ui("执行详情") },
+          !selected ? h("div", { className: "wf-empty" }, h("h3", null, ui("还没有任务")), newTaskButton)
+            : !detail ? h("div", { className: "wf-loading" }, ui(readError ? "暂时无法读取执行详情" : "正在读取执行记录…"))
+            : h(R.Fragment, null,
+              h("div", { className: "wf-detail-header" },
+                h("div", { className: "wf-title-line" }, h("h2", null, taskTitle(detail.objective)),
+                  h(Badge, { tone: detail.acceptance.status === "ACCEPTED" ? "green" : "neutral" },
+                    ui(detail.acceptance.status === "ACCEPTED" ? "已验收" : state(detail) === "done" ? "待验收" : STATES[state(detail)]))),
+                h("button", { className: "wf-text-button", "aria-label": ui("详细记录"), "aria-expanded": showDetails,
+                  onClick: () => { setShowDetails(value => !value); setTab("overview"); setProof(null); } }, ui(showDetails ? "收起记录" : "详细记录"))),
+              showDetails && h("div", { className: "wf-record-meta" },
+                h("details", null, h("summary", null, ui("完整需求")), h("pre", null, detail.objective)),
+                h("dl", null, h("dt", null, ui("源版本")), h("dd", null, h("code", null, detail.source_revision)),
+                  h("dt", null, ui("执行目标")), h("dd", null, h("code", null, detail.execution_id)))),
+              showDetails && h("nav", { className: "wf-tabs", "aria-label": ui("执行详情页签") },
+                [["overview", "执行概览"], ["evidence", "验收证据"], ["repairs", "整改记录"]].map(([key, label]) => h("button", {
+                  key, className: tab === key ? "active" : "", "aria-pressed": tab === key,
+                  onClick: () => { if (key === tab) return; setProof(null); setTab(key); } }, ui(label)))),
+              tab === "overview" && h("div", { className: "wf-content" },
+                detail.acceptance.status !== "ACCEPTED" && h("section", { className: "wf-next-step", "aria-label": ui("下一步") },
+                  h("h3", null, ui(needsSetup ? (needsModels ? "请先配置模型" : "运行环境未就绪") : step.title)),
+                  h("div", { className: "wf-next-actions" },
+                    needsSetup ? h("button", { className: "wf-button wf-primary", onClick: () => needsModels ? setSettingsOpen(true) : showRecords() }, ui(needsModels ? "模型配置" : "查看问题"))
+                      : step.action ? h("button", { className: "wf-button wf-primary", disabled: !!actionBlocked(step.action), onClick: () => openAction(step.action) }, ui(actionLabel(step.action)))
+                        : step.focus && h("button", { className: "wf-button", onClick: () => focusStage(step.focus) }, ui("查看阻塞阶段")))),
+                h("div", { className: "wf-progress" }, h("progress", { "aria-label": ui("阶段完成进度"), max: 4, value: completed })),
+                h("div", { className: "wf-dag", "aria-label": ui(development ? "方案 → 开发与独立测试 → 独立审查" : "调查 → 开发 → 独立审查 → 最终汇总") }, roles.map(role => h("button", {
+                  key: role, className: cx("wf-node", "wf-node-" + role, "wf-state-" + (tasks[role]?.status || "missing"), focus === role && "focused"),
+                  "aria-pressed": focus === role, onClick: () => setFocus(role) }, h("strong", null, ui(names[role])), h("small", null, stageLabel(role))))),
+                (activeTask?.result || activeTask?.verification) && h(TaskResults, { role: focus, task: activeTask, development }),
+                showDetails && readiness && h("details", { className: "wf-readiness", open: needsSetup ? true : undefined, "aria-label": ui("执行准备") },
+                  h("summary", null, ui("执行准备")),
+                  h("ul", { className: "wf-readiness-list" }, readiness.checks.map(check => h("li", { key: check.code, className: check.ready ? "ready" : "pending" },
+                    h("strong", null, ui(names[check.code] || check.label)), h("small", null, ui(check.ready ? "已就绪" : "未就绪")),
+                    !check.ready && h("span", null, ui(check.detail))))))),
+              tab === "evidence" && h("div", { className: "wf-content" },
+                !proof ? h("p", null, ui(readError ? "证据读取未完成，请刷新后重试。" : "正在读取证据…"))
+                  : proof.map((item, index) => h("article", { className: "wf-proof", key: index },
+                    h("div", { className: "wf-section-heading" }, h("h3", null, ui(development ? "独立测试验收" : index === 0 ? "开发结果验证" : "审查副本验证")),
+                      h(Badge, { tone: item.available && item.receipt.status === "PASS" && item.log_matches ? "green" : "neutral" },
+                        ui(item.available ? (item.log_matches ? (item.receipt.status === "PASS" ? "通过" : "未通过") : "日志不一致") : "尚无证据"))),
+                    item.available && h("details", null, h("summary", null, ui("查看验证日志（最近 16 千字节）")),
+                      h("pre", { className: "wf-command" }, item.receipt.command), h("pre", { className: "wf-log" }, item.log_tail)))),
+                h("h3", null, ui("候选变更")), h("ul", { className: "wf-files" }, detail.changed_files.map(file => h("li", { key: file }, h("code", null, file))))),
+              tab === "repairs" && h("div", { className: "wf-content" },
+                detail.failures.length ? detail.failures.map((failure, i) => h("article", { className: "wf-failure", key: i },
+                  h(Badge, { tone: "amber" }, ui(KINDS[failure.kind]) || ui("其他问题")), h("h4", null, failure.reason), h("small", null, formatDate(failure.at))))
+                  : h("p", { className: "wf-muted" }, ui("暂无整改记录")),
+                writable && step?.action === "repair" && actionButton("repair"))))),
+      dialog && h("div", { className: "wf-modal-backdrop", onClick: event => { if (event.target === event.currentTarget && !busy) setDialog(null); } },
+        h("form", { className: "wf-modal", role: "dialog", "aria-modal": true,
+          "aria-label": dialog === "new" ? ui("新建任务") : ui(actionLabel(dialog)), onSubmit: execute },
+          h("h2", null, dialog === "new" ? ui("新建任务") : ui(actionLabel(dialog))),
+          dialog === "new" ? h(R.Fragment, null,
+            h("label", null, ui("开发需求"), h("textarea", { required: true, maxLength: 4000, rows: 5, value: objective,
+              onChange: event => setObjective(event.target.value), placeholder: ui("描述你想实现的功能") })),
+            h("details", { className: "wf-modal-options" }, h("summary", null, ui("更多选项")),
+              h("label", null, ui("执行实例名（可选）"), h("input", { maxLength: 128, value: instance, onChange: event => setInstance(event.target.value) }))))
+            : h(R.Fragment, null,
+              h("div", { className: "wf-confirm-target" }, h("strong", null, taskTitle(dialogTarget.objective)),
+                h("details", null, h("summary", null, ui("完整需求")), h("p", null, dialogTarget.objective),
+                  h("small", null, ui("源版本 {0} · 第 {1} 轮", short(dialogTarget.revision), dialogTarget.round_number + 1)))),
+              h("p", null, ui(development && dialog === "approve" ? "批准后自动开发、测试和审查，完成后由你确认交付。" : ACTIONS[dialog][1])),
+              dialog === "repair" && h(R.Fragment, null,
+                h("label", null, ui("修改意见"), h("textarea", { required: true, maxLength: 2000, rows: 3, value: reason, onChange: event => setReason(event.target.value) })),
+                h("details", { className: "wf-modal-options" }, h("summary", null, ui("更多选项")),
+                  h("label", null, ui("失败类型"), h("select", { value: kind, onChange: event => setKind(event.target.value) },
+                    Object.entries(KINDS).map(([value, label]) => h("option", { value, key: value }, ui(label))))))),
+              h("label", { className: "wf-check" }, h("input", { type: "checkbox", checked: ack, onChange: event => setAck(event.target.checked) }), ui("我已确认"))),
+          error && h("p", { className: "wf-alert", role: "alert" }, ui(error)),
+          h("div", { className: "wf-modal-actions" },
+            h("button", { type: "button", className: "wf-button", disabled: busy, onClick: () => setDialog(null) }, ui("取消")),
+            h("button", { type: "submit", className: "wf-button wf-primary", disabled: !canOperate || (dialog !== "new" && (!ack || !!actionBlocked(dialog))) },
+              ui(busy ? "正在处理…" : dialog === "new" ? "创建任务" : "确认操作"))))));
   }
+
   window.__HERMES_PLUGINS__.register("workflow", App);
 })();

@@ -22,11 +22,17 @@ import configure_profiles as configs
 import workflow_control as wc
 from hermes_cli import kanban_db as kb
 
+connect_closing = wc.workflow_runtime.connect_closing
+
 REPOSITORY = Path(__file__).resolve().parents[1]
 
 
 class WorkflowTest(unittest.TestCase):
     def setUp(self):
+        version = getattr(self, "workflow_version", 1)
+        version_patch = patch.object(wc, "CURRENT_WORKFLOW_VERSION", version)
+        version_patch.start()
+        self.addCleanup(version_patch.stop)
         self.temporary = tempfile.TemporaryDirectory(prefix="hermes-workflow-test-")
         self.addCleanup(self.temporary.cleanup)
         self.directory = Path(self.temporary.name)
@@ -51,7 +57,7 @@ class WorkflowTest(unittest.TestCase):
         self.stdout = redirect_stdout(self.output)
         self.stdout.__enter__()
         self.addCleanup(self.stdout.__exit__,None,None,None)
-        for role in wc.ROLES:
+        for role in dict.fromkeys((*wc.LEGACY_ROLES, *wc.ROLES)):
             profile = self.root / "profiles" / role
             profile.mkdir(parents=True)
             tools = ["kanban","memory","skills"] if role == "orchestrator" else ["terminal","file","delegation","code_execution"]
@@ -62,12 +68,16 @@ class WorkflowTest(unittest.TestCase):
         self.workflow = wc.Workflow(self.root,self.env)
         self.manifest = self.workflow.submit("Add an auditable test fixture")
         self.execution = self.manifest["execution_id"]
+        if version == 1:
+            # Historical manifests did not carry a workflow_version field.
+            self.manifest.pop("workflow_version", None)
+            self.workflow.save(self.manifest)
 
     def row(self):
         return self.workflow.load(self.execution)["rounds"][-1]
 
     def completed(self,role,metadata=None):
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             tid = self.row()["tasks"][role]
             kb.recompute_ready(conn)
             self.assertIsNotNone(kb.claim_task(conn,tid))
@@ -105,7 +115,7 @@ class WorkflowTest(unittest.TestCase):
                 self.workflow.verify(self.execution,role,self.passing_runner)
 
     def test_default_off_and_no_approval_cannot_write(self):
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             result=kb.dispatch_once(conn,spawn_fn=lambda task,workspace: self.fail("unapproved dispatch"),board="default")
             self.assertEqual(result.spawned,[])
             for role,tid in self.row()["tasks"].items():
@@ -196,7 +206,7 @@ class WorkflowTest(unittest.TestCase):
     def test_builder_failure_never_releases_review(self):
         self.workflow.start(self.execution,True)
         self.completed("researcher")
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             kb.recompute_ready(conn)
             tid=self.row()["tasks"]["builder"]
             self.assertIsNotNone(kb.claim_task(conn,tid))
@@ -209,7 +219,7 @@ class WorkflowTest(unittest.TestCase):
         self.workflow.accept(self.execution)
         again=self.workflow.submit(self.manifest["objective"])
         self.assertEqual(again["rounds"],self.workflow.load(self.execution)["rounds"])
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             for tid in self.row()["tasks"].values():
                 kb.archive_task(conn,tid)
         self.assertEqual(again["rounds"],self.workflow.submit(self.manifest["objective"])["rounds"])
@@ -231,7 +241,7 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(len(repaired["rounds"]),2)
         self.assertEqual(repaired["rounds"][0]["tasks"]["researcher"],repaired["rounds"][1]["tasks"]["researcher"])
         self.assertFalse(repaired["approved_write"])
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             self.assertIn(repaired["rounds"][0]["tasks"]["reviewer"],kb.parent_ids(conn,repaired["rounds"][1]["tasks"]["builder"]))
 
     def test_interrupted_repair_revokes_previous_round_authorization(self):
@@ -244,7 +254,7 @@ class WorkflowTest(unittest.TestCase):
         recovered = self.workflow.repair(self.execution,"implementation","fix review findings")
         self.assertEqual(len(recovered["rounds"]),2)
         self.assertEqual(len(recovered["failures"]),1)
-        self.assertEqual(set(recovered["rounds"][-1]["tasks"]),set(wc.ROLES))
+        self.assertEqual(set(recovered["rounds"][-1]["tasks"]),set(wc.LEGACY_ROLES))
         self.assertFalse(recovered["approved_write"])
         self.assertEqual(recovered,self.workflow.repair(self.execution,"implementation","fix review findings"))
 
@@ -261,7 +271,7 @@ class WorkflowTest(unittest.TestCase):
         builder = self.row()["tasks"]["builder"]
         resumed = self.workflow.repair(self.execution,"test","fix review findings")
         self.assertEqual(resumed["rounds"][-1]["tasks"]["builder"],builder)
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             self.assertEqual(len(kb.list_tasks(conn)),7)
         self.assertFalse(resumed["approved_write"])
         with self.assertRaisesRegex(wc.Rejected,"HUMAN_REQUIRED"):
@@ -281,7 +291,7 @@ class WorkflowTest(unittest.TestCase):
         for role in ("builder","reviewer"):
             self.workflow.verify(self.execution,role,self.passing_runner)
         self.assertEqual(self.workflow.accept(self.execution)["status"],"ACCEPTED")
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             self.assertEqual(len(kb.list_runs(conn,research)),1)
 
     def test_start_retry_resumes_release_without_rewriting_live_profile(self):
@@ -293,12 +303,12 @@ class WorkflowTest(unittest.TestCase):
         with patch.object(kb,"specify_triage_task",side_effect=interrupted):
             with self.assertRaisesRegex(RuntimeError,"interrupted start"):
                 self.workflow.start(self.execution,True)
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             self.assertIsNotNone(kb.claim_task(conn,self.row()["tasks"]["researcher"]))
         with patch.object(self.workflow,"scoped_profile",side_effect=AssertionError("rewrote live permissions")):
             resumed = self.workflow.start(self.execution,True)
         self.assertTrue(resumed["approved_write"])
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             self.assertEqual(kb.get_task(conn,self.row()["tasks"]["builder"]).status,"todo")
 
     def test_start_cannot_reopen_a_prepared_review(self):
@@ -323,7 +333,7 @@ class WorkflowTest(unittest.TestCase):
         with patch.object(wc.shutil,"rmtree",side_effect=AssertionError("replaced released review")):
             recovered = self.workflow.prepare_review(self.execution)
         self.assertEqual(recovered["rounds"][-1]["candidate_digest"],frozen)
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             self.assertEqual(kb.get_task(conn,self.row()["tasks"]["orchestrator"]).status,"todo")
 
     def test_prepare_review_retry_rejects_changed_snapshot(self):
@@ -345,7 +355,7 @@ class WorkflowTest(unittest.TestCase):
         with patch.object(wc.shutil,"copytree",side_effect=racing_copy):
             with self.assertRaisesRegex(wc.Rejected,"snapshot"):
                 self.workflow.prepare_review(self.execution)
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             self.assertEqual(kb.get_task(conn,self.row()["tasks"]["reviewer"]).status,"triage")
 
     def test_missing_verification_log_is_not_accepted(self):
@@ -354,7 +364,7 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(self.workflow.status(self.execution)["acceptance"]["status"],"NOT_ACCEPTED")
 
     def test_missing_native_task_is_reported_in_status(self):
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             conn.execute("DELETE FROM tasks WHERE id=?",(self.row()["tasks"]["orchestrator"],))
             conn.commit()
         state = self.workflow.status(self.execution)
@@ -441,13 +451,13 @@ class WorkflowTest(unittest.TestCase):
         def spawn(task,workspace,board=None):
             calls.append(task.id)
             return os.getpid()  # a live process; no Worker or model is launched
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             first=kb.dispatch_once(conn,spawn_fn=spawn,board="default",max_in_progress=1)
             self.assertEqual(len(first.spawned),1)
             kb.dispatch_once(conn,spawn_fn=spawn,board="default",max_in_progress=1)
             self.assertEqual(len(calls),1)
             # Reopen the real DB as a replacement gateway process would.
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             kb.dispatch_once(conn,spawn_fn=spawn,board="default",max_in_progress=1)
             self.assertEqual(len(calls),1)
             tid=calls[0]
@@ -457,7 +467,7 @@ class WorkflowTest(unittest.TestCase):
 
     def test_native_timeout_and_worker_crash_do_not_auto_accept(self):
         self.workflow.start(self.execution,True)
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             kb.recompute_ready(conn)
             tid=self.row()["tasks"]["researcher"]
             self.assertIsNotNone(kb.claim_task(conn,tid))
@@ -470,7 +480,7 @@ class WorkflowTest(unittest.TestCase):
 
     def test_native_crashed_worker_trips_existing_failure_limit(self):
         self.workflow.start(self.execution,True)
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             kb.recompute_ready(conn)
             tid=self.row()["tasks"]["researcher"]
             self.assertIsNotNone(kb.claim_task(conn,tid))
@@ -484,7 +494,7 @@ class WorkflowTest(unittest.TestCase):
     def test_scoped_profile_cwd_reaches_exact_mount_through_native_config(self):
         from tools.terminal_tool import _get_env_config
         self.workflow.start(self.execution,True)
-        with kb.connect_closing(board="default") as conn:
+        with connect_closing(board="default") as conn:
             for role in ("researcher","builder","reviewer"):
                 tid=self.row()["tasks"][role]
                 config=configs.read_yaml(self.root/"profiles"/kb.get_task(conn,tid).assignee/"config.yaml")
@@ -531,7 +541,7 @@ class WorkflowTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,"interrupted"):
                 self.workflow.submit("Interrupted execution","resume")
         recovered=self.workflow.submit("Interrupted execution","resume")
-        self.assertEqual(set(recovered["rounds"][0]["tasks"]),set(wc.ROLES))
+        self.assertEqual(set(recovered["rounds"][0]["tasks"]),set(wc.LEGACY_ROLES))
         self.assertEqual(recovered,self.workflow.submit("Interrupted execution","resume"))
 
     def test_native_docker_arguments_keep_mount_permissions(self):
@@ -539,7 +549,7 @@ class WorkflowTest(unittest.TestCase):
         from tools import credential_files
         self.workflow.start(self.execution,True)
         for role in ("builder","reviewer"):
-            with self.subTest(role=role),kb.connect_closing(board="default") as conn:
+            with self.subTest(role=role),connect_closing(board="default") as conn:
                 cfg=configs.read_yaml(self.root/"profiles"/kb.get_task(conn,self.row()["tasks"][role]).assignee/"config.yaml")
                 calls=[]
                 def fake_docker(command,**kwargs):
@@ -570,6 +580,9 @@ class WorkflowTest(unittest.TestCase):
                     environment._container_id=None
 
     def test_existing_shell_invocation_uses_native_interpreter_and_job_key(self):
+        legacy = self.workflow.submit("Wrapper fixture", "legacy-instance")
+        legacy.pop("workflow_version", None)
+        self.workflow.save(legacy)
         fixture=self.directory/"wrapper.env"
         entries=[
             f"PROJECT_DIR={self.project}",f"OUTPUT_DIR={self.directory/'outputs'}",
@@ -586,7 +599,7 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
         payload=json.loads(result.stdout)
         self.assertEqual(payload["instance"],"legacy-instance")
-        self.assertEqual(set(payload["rounds"][0]["tasks"]),set(wc.ROLES))
+        self.assertEqual(set(payload["rounds"][0]["tasks"]),set(wc.LEGACY_ROLES))
 
 
 class BaselineTest(unittest.TestCase):

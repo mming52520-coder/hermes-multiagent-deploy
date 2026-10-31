@@ -3,6 +3,7 @@ installed-commit.txt
 *.tar.gz
 !downloads/hermes-workflow-local-readonly-v0225-zh-CN.tar.gz
 !downloads/hermes-workflow-local-v0225-zh-CN.tar.gz
+!downloads/hermes-workflow-local-v2-zh-CN.tar.gz
 
 # Local Codex workspace metadata
 .agents/

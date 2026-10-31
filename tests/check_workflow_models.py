@@ -30,6 +30,7 @@ class ModelConnectionsTest(unittest.TestCase):
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.home = self.fixture.home
+        models.ensure_profiles(self.fixture.workflow, list(dict.fromkeys(models.ROLES + models.LEGACY_ROLES)))
         self.catalog = patch.object(models, "catalog", return_value=PROVIDERS)
         self.catalog_mock = self.catalog.start(); self.addCleanup(self.catalog.stop)
 
@@ -53,7 +54,7 @@ class ModelConnectionsTest(unittest.TestCase):
         models.save(self.home, ["reviewer"], provider="anthropic", api_key="synthetic-review-key")
         models.save(self.home, ["researcher"], provider="custom", model="local-model", api_key="synthetic-local-key",
                     base_url="http://127.0.0.1:11434/v1", protocol="chat_completions")
-        self.assertEqual(models.profile_settings(self.home, "orchestrator")["provider"], "openrouter")
+        self.assertEqual(models.profile_settings(self.home, "tester")["provider"], "openrouter")
         self.assertEqual(models.profile_settings(self.home, "builder")["model"], "code-model")
         self.assertEqual(models.profile_settings(self.home, "reviewer")["provider"], "anthropic")
         research = models.profile_settings(self.home, "researcher")
@@ -67,6 +68,43 @@ class ModelConnectionsTest(unittest.TestCase):
         public = json.dumps([models.profile_settings(self.home, role) for role in models.ROLES])
         self.assertNotIn("synthetic-code-key", public)
         self.assertNotIn("api_key", public)
+
+    def test_tester_reuses_saved_connection_without_overwriting_legacy_role(self):
+        models.save(self.home, ["orchestrator"], provider="openai-api", model="independent-test-model",
+                    api_key="synthetic-existing-connection")
+        original = (self.home / "profiles/orchestrator/config.yaml").read_bytes()
+        result = models.copy_connection(self.home, "tester", "orchestrator")
+        self.assertEqual(result["model"], "independent-test-model")
+        self.assertTrue(result["has_key"])
+        self.assertNotIn("synthetic-existing-connection", json.dumps(result))
+        self.assertEqual((self.home / "profiles/orchestrator/config.yaml").read_bytes(), original)
+        with workflow_runtime.home_scope(self.home / "profiles/tester"):
+            self.assertEqual(load_env()["OPENAI_API_KEY"], "synthetic-existing-connection")
+
+    def test_unconfigured_legacy_role_does_not_block_creating_tester(self):
+        import shutil
+        from configure_profiles import write_yaml
+        shutil.rmtree(self.home / "profiles/tester")
+        write_yaml(self.home / "profiles/orchestrator/config.yaml", {"model": {"default": ""}})
+        models.ensure_profiles(self.fixture.workflow, ["tester"])
+        self.assertTrue((self.home / "profiles/tester/SOUL.md").is_file())
+
+    def test_legacy_custom_connection_retains_its_endpoint_and_credential(self):
+        from configure_profiles import write_yaml
+        from hermes_cli.config import save_env_value
+        custom = {"name": "synthetic-custom", "base_url": "http://127.0.0.1:11434/v1",
+                  "api_mode": "chat_completions", "key_env": "SYNTHETIC_MODEL_KEY"}
+        write_yaml(self.home / "profiles/orchestrator/config.yaml", {
+            "model": {"provider": "custom:synthetic-custom", "default": "synthetic-model"},
+            "custom_providers": [custom],
+        })
+        with workflow_runtime.home_scope(self.home / "profiles/orchestrator"):
+            save_env_value("SYNTHETIC_MODEL_KEY", "synthetic-custom-key")
+        result = models.copy_connection(self.home, "tester", "orchestrator")
+        self.assertTrue(result["has_key"])
+        self.assertEqual(read_yaml(self.home / "profiles/tester/config.yaml")["custom_providers"], [custom])
+        with workflow_runtime.home_scope(self.home / "profiles/tester"):
+            self.assertEqual(load_env()["SYNTHETIC_MODEL_KEY"], "synthetic-custom-key")
 
     def test_empty_key_reuses_only_the_selected_profiles_existing_credential(self):
         models.save(self.home, ["builder"], provider="openai-api", api_key="synthetic-existing-key")

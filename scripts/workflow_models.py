@@ -8,7 +8,8 @@ if __package__:
 else:
     from configure_profiles import read_yaml
 
-ROLES = ("researcher", "builder", "reviewer", "orchestrator")
+ROLES = ("researcher", "builder", "tester", "reviewer")
+LEGACY_ROLES = ("researcher", "builder", "reviewer", "orchestrator")
 
 
 def catalog() -> list[dict]:
@@ -140,6 +141,41 @@ def ensure_profiles(workflow, roles: list[str]) -> None:
                                                   docker_mount_cwd_to_workspace=False)
         atomic_config_replace(directory / "config.yaml", config)
         shutil.copyfile(souls / (role + ".md"), directory / "SOUL.md")
+        if role == "tester":
+            legacy_model = read_yaml(workflow.root / "profiles" / "orchestrator" / "config.yaml").get("model") or {}
+            if isinstance(legacy_model, dict) and legacy_model.get("default"):
+                copy_connection(workflow.root, "tester", "orchestrator")
+
+
+def copy_connection(home: Path, target: str, source: str) -> dict:
+    """Reuse a saved connection without sending its credential back to the browser."""
+    from copy import deepcopy
+    from hermes_cli.config import atomic_config_replace, save_env_value
+    from hermes_cli.web_server_profiles import _config_profile_scope
+
+    source_config = read_yaml(home / "profiles" / source / "config.yaml")
+    model = source_config.get("model") or {}
+    if not isinstance(model, dict) or not model.get("default"):
+        raise ValueError("所选角色尚未配置模型连接。")
+    provider = model.get("provider", "")
+    custom = [entry for entry in source_config.get("custom_providers", [])
+              if entry.get("name") == provider.removeprefix("custom:")]
+    key_env = model.get("key_env") or (custom[0].get("key_env") if custom else None)
+    fields = (key_env,) if key_env else credential_fields(provider)
+    credentials = {field: _profile_key(source, field) for field in fields}
+    path = home / "profiles" / target / "config.yaml"
+    config = read_yaml(path)
+    for name in ("model", "auxiliary", "fallback_model"):
+        if name in source_config:
+            config[name] = deepcopy(source_config[name])
+    if custom:
+        config["custom_providers"] = deepcopy(custom)
+    with _config_profile_scope(target):
+        for field, key in credentials.items():
+            if key:
+                save_env_value(field, key)
+        atomic_config_replace(path, config)
+    return profile_settings(home, target)
 
 
 def profile_settings(home: Path, profile: str) -> dict:
@@ -152,7 +188,10 @@ def profile_settings(home: Path, profile: str) -> dict:
     if not isinstance(model, dict):
         model = {"default": str(model)}
     provider = model.get("provider", "")
-    fields = (model["key_env"],) if model.get("key_env") else credential_fields(provider)
+    custom = [entry for entry in config.get("custom_providers", [])
+              if entry.get("name") == provider.removeprefix("custom:")]
+    key_env = model.get("key_env") or (custom[0].get("key_env") if custom else None)
+    fields = (key_env,) if key_env else credential_fields(provider)
     token = hermes_constants.set_hermes_home_override(directory)
     try:
         values = load_env()

@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -81,10 +81,23 @@ class ApplicationTest(unittest.TestCase):
         self.assertNotIn("unit-test-private-value", result.text)
         self.assertNotIn("PACKY_CLAUDE_API_KEY", result.text)
 
+    def test_details_show_native_results_without_claiming_missing_skill_history(self):
+        f = self.fixture
+        f.workflow.start(f.execution, True)
+        f.completed("researcher")
+        detail = self.client.get(f"{self.url}/executions/{f.execution}")
+        self.assertEqual(detail.status_code, 200, detail.text)
+        task = detail.json()["rounds"][0]["tasks"]["researcher"]
+        self.assertEqual(task["result"], "offline worker result")
+        self.assertEqual(task["skills_used"], [])
+        self.assertFalse(task["skills_recorded"])
+        listed = self.client.get(self.url + "/executions").json()["executions"][0]
+        self.assertNotIn("result", listed["rounds"][0]["tasks"]["researcher"])
+
     def test_default_mode_rejects_all_mutations_server_side(self):
         self.assertFalse(self.client.get(self.url + "/meta").json()["actions_enabled"])
         self.assertEqual(self.client.post(self.url + "/executions", json={"objective":"blocked"}).status_code,403)
-        for action in ("approve","launch","start","prepare-review","verify-builder","verify-reviewer","accept","repair"):
+        for action in ("approve","advance","launch","start","prepare-review","verify-builder","verify-reviewer","accept","repair"):
             response=self.client.post(f"{self.url}/executions/{self.fixture.execution}/actions/{action}",json={"confirmed":True},headers={"X-Hermes-Workflow-Action":"1"})
             self.assertEqual(response.status_code,403,action)
 
@@ -101,7 +114,7 @@ class ApplicationTest(unittest.TestCase):
             self.assertEqual(response.status_code,422)
         self.assertEqual(self.client.post(f"{self.url}/executions/{self.fixture.execution}/actions/shell",json={"confirmed":True}).status_code,422)
 
-    def test_confirmed_submit_uses_existing_native_four_stage_plan(self):
+    def test_confirmed_submit_uses_new_development_and_independent_testing_plan(self):
         self.enable_actions()
         core=self.api.core_module()
         with patch.object(core,"verify_source",return_value={}) as provenance:
@@ -110,8 +123,61 @@ class ApplicationTest(unittest.TestCase):
         provenance.assert_called_once()
         detail=self.client.get(self.url + "/executions/" + result.json()["execution_id"])
         self.assertEqual(detail.status_code,200,detail.text)
-        self.assertEqual(set(detail.json()["rounds"][0]["tasks"]),set(self.fixture.row()["tasks"]))
+        self.assertEqual(set(detail.json()["rounds"][0]["tasks"]),{"researcher", "builder", "tester", "reviewer"})
+        self.assertEqual(detail.json()["workflow_version"], 2)
         self.assertEqual(detail.json()["acceptance"]["status"],"NOT_ACCEPTED")
+
+    def test_new_approval_advances_execution_and_keeps_acceptance_manual(self):
+        self.enable_actions()
+        workflow = Mock()
+        workflow.advance.return_value = {"execution_id": self.fixture.execution, "state": "RUNNING_RESEARCH"}
+        with patch.object(self.api, "load_manifest", return_value={"workflow_version": 2}), \
+             patch.object(self.api, "bound_workflow", return_value=workflow), \
+             patch.object(self.api.core_module(), "verify_source", return_value={}):
+            response = self.client.post(f"{self.url}/executions/{self.fixture.execution}/actions/approve",
+                json={"confirmed": True, "round_number": 0}, headers={"X-Hermes-Workflow-Action": "1"})
+        self.assertEqual(response.status_code, 200, response.text)
+        workflow.approve.assert_called_once_with(self.fixture.execution, expected_round=0)
+        workflow.advance.assert_called_once_with(self.fixture.execution)
+        workflow.accept.assert_not_called()
+        self.assertEqual(response.json()["state"], "RUNNING_RESEARCH")
+
+    def test_legacy_approval_keeps_separate_start_action(self):
+        self.enable_actions()
+        workflow = Mock()
+        with patch.object(self.api, "bound_workflow", return_value=workflow), \
+             patch.object(self.api.core_module(), "verify_source", return_value={}):
+            response = self.client.post(f"{self.url}/executions/{self.fixture.execution}/actions/approve",
+                json={"confirmed": True, "round_number": 0}, headers={"X-Hermes-Workflow-Action": "1"})
+        self.assertEqual(response.status_code, 200, response.text)
+        workflow.advance.assert_not_called()
+
+    def test_new_model_settings_include_tester_and_legacy_execution_keeps_orchestrator(self):
+        models = Mock()
+        models.catalog.return_value = []
+        models.profile_settings.side_effect = lambda home, profile: {"profile": profile, "has_key": True}
+        with patch.object(self.api, "models_module", return_value=models):
+            latest = self.client.get(self.url + "/model-connection")
+            legacy = self.client.get(self.url + "/model-connection?execution=" + self.fixture.execution)
+        self.assertEqual(set(latest.json()["roles"]), {"researcher", "builder", "tester", "reviewer"})
+        self.assertEqual(set(legacy.json()["roles"]), {"researcher", "builder", "reviewer", "orchestrator"})
+
+    def test_reading_active_workflow_does_not_repeat_startup_checks(self):
+        self.enable_actions()
+        manifest = self.fixture.workflow.load(self.fixture.execution)
+        manifest["workflow_version"] = 2
+        manifest["rounds"][-1]["started_at"] = 1
+        workflow = Mock()
+        workflow.status.return_value = {"acceptance": {"status": "NOT_ACCEPTED"}, "budget": {}, "failures": [],
+                                       "workflow_state": "RUNNING_RESEARCH"}
+        with patch.object(self.api, "load_manifest", return_value=manifest), \
+             patch.object(self.api, "bound_workflow", return_value=workflow):
+            meta = self.client.get(self.url + "/meta")
+            details = self.client.get(f"{self.url}/executions/{self.fixture.execution}")
+        self.assertEqual(details.status_code, 200, details.text)
+        self.assertIsNone(meta.json()["readiness"])
+        self.assertIsNone(details.json()["readiness"])
+        workflow.readiness.assert_not_called()
 
     def test_gate_failure_is_preserved_as_http_conflict(self):
         self.enable_actions()

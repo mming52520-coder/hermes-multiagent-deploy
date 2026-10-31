@@ -26,7 +26,7 @@ def install(home: Path, env_file: Path, enable: bool = False, archive: Path | No
     files = {relative: REPOSITORY / "plugins" / "workflow" / relative for relative in ASSETS}
     files.update({f"operator/{name}": REPOSITORY / "scripts" / name for name in OPERATOR})
     files.update({f"operator/souls/{role}.md": REPOSITORY / "souls" / f"{role}.md"
-                  for role in ("researcher", "builder", "reviewer", "orchestrator")})
+                  for role in ("researcher", "builder", "tester", "reviewer", "orchestrator")})
     marker = target / ".managed-files.json"
     previous = {}
     if target.exists():

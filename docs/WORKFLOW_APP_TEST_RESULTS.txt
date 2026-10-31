@@ -104,3 +104,70 @@ Reproduction (set each variable to the corresponding audited environment):
 PYTHONPATH="$LEGACY_SOURCE" HERMES_HOME="$TEST_HOME" HERMES_BASELINE_ARCHIVE="$LEGACY_ARCHIVE" "$LEGACY_PYTHON" -m unittest discover -s tests
 PYTHONPATH="$NATIVE_SOURCE:$PWD/tests" HERMES_HOME="$TEST_HOME" HERMES_BASELINE_ARCHIVE="$NATIVE_ARCHIVE" "$NATIVE_PYTHON" -m unittest check_workflow_writes_v0225 check_workflow_models
 HERMES_FRONTEND_SOURCE="$FRONTEND_SOURCE" node --test tests/workflow_dashboard.test.cjs
+
+2026-10-31: Simplified overview and native stage outputs (v0.5.0)
+Frontend: 22/23 passed initially; the remaining assertion referenced the removed action panel. Updated to the next-step control contract; that check passed on its own rerun.
+Authenticated legacy HTTP adapter: 17 tests / 5.073s / OK.
+Native v0.22.5 session store: 1 targeted test / 4.235s / OK; completed summaries, successful skill views, deduplication and list/detail output separation.
+No new inference, workflow launch, approval or acceptance action was performed for these UI changes.
+Live local Dashboard: PASS. Refreshed v0.5 UI hides the marked decorations/panels, labels the connection area Model settings, and displays the recorded research summary and No skills were invoked in this run from the native session.
+
+2026-10-31: Customer workbench (frontend v0.6.0)
+Frontend suite: 27 tests / 1.156s / OK. JS syntax and diff whitespace checks passed.
+Covered: compact titles with full request access, final-summary default, collapsed settings with preserved drafts, explicit approval/start, ordered delivery actions, reuse of current PASS receipts, stop on verification failure, optional failure classification, polling and bilingual rendering.
+Live local Dashboard: task list, stage results and minimal creation modal reviewed. Screenshots: outputs/verification/customer-workbench/overview.png and new-task.png.
+Existing backend, credentials and source/approval/acceptance gates were reused. No model inference was needed for this UI review.
+
+2026-11-01: Workflow v2 / customer workbench v0.7.0
+Implemented: versioned legacy compatibility; read-only upstream handoffs; owner-generated
+completion identity; parallel Builder and independent Tester; one frozen platform test
+receipt; independent Reviewer; explicit initial/repair approval and final acceptance;
+native-owner automatic advancement; elapsed execution versus approval-wait timing.
+
+Offline checks (existing prepared runtimes; no dependency installation):
+- Native v2 behavior: 12 checks passed; subsequent targeted repair/readiness/cache
+  checks passed. Added evidence-only review retry check passed (13th case).
+- Native lifecycle hook: 3 checks passed.
+- Model connection behavior: 9 checks passed, including preserved legacy connection,
+  empty legacy model setup and custom endpoint/credential inheritance.
+- Frontend: initial 31-case suite passed; added connection case passed with the
+  5-case v2 subset; final tester-label transition case passed. All 33 current cases
+  have passing records; the complete suite was not repeatedly rerun.
+- Native write behavior: 10 cases passed in the first run; the remaining legacy HTTP
+  fixture was pinned to its historical workflow version and passed on targeted rerun.
+- Native API: 5 targeted cases passed, including first approval advances without
+  accepting, legacy start separation and no repeated readiness checks while browsing.
+- Legacy core: 46 cases passed, then the remaining shell-resume fixture passed after
+  retaining its historical execution version (47 current cases covered).
+- Legacy HTTP: 20 applicable cases passed. The new-v2-submit case requires native
+  v0.22.5 atomic_config_replace and passed in that native runtime separately; attempting
+  it against v0.18.2 is unsupported. System PyYAML was appended to sys.path rather than
+  prepended, retaining the native Pydantic/typing_extensions versions.
+- JS syntax and git diff --check passed.
+
+Real inference + Docker run:
+- Native Researcher, Builder and Tester each completed one real worker run; Reviewer
+  completed two. Existing saved model connections were used without exposing keys.
+- Real requirement: add latest-round progress counts to Workflow.status(), preserve
+  existing status fields and distinguish completed tasks from accepted delivery.
+- Builder and Tester actually ran in parallel after reading the Researcher handoff.
+- Frozen Docker platform run: 53 project tests + 8 independent tests, all passed,
+  exit 0. Complete test execution occurred once.
+- First review returned FAIL solely because the running Gateway cached the pre-update
+  handoff publisher and omitted the executed independent-test snapshot. The FAIL
+  record was retained. Reloaded the updated owner, republished the bound snapshot,
+  reused the passing receipt, and ran only Reviewer again: PASS.
+- The owner stopped at READY_FOR_ACCEPTANCE. Operator recorded final acceptance
+  through the APP under the user's explicit authorization: ACCEPTED.
+- Native logs, original FAIL, subsequent PASS, operator recovery record, acceptance
+  receipt and actual candidate patch are retained under
+  outputs/verification/workflow-v2-real-run/ (local run artifacts, not bundled).
+- Actual API cost is unavailable and is not reported as an estimate or zero.
+
+2026-11-01: Compact workspace task list
+Renamed the page heading to Workspace / 工作台. Task rows show title and status;
+removed timestamps, list count and large card borders. Search and selection remain,
+with the complete title available on hover.
+All 33 existing frontend component tests passed in one run (1.352s).
+JS syntax and git diff --check passed. The actual local Dashboard was visually
+reviewed with all five existing tasks. No model execution was repeated for this change.

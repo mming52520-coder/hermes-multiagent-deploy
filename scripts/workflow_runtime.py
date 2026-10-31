@@ -67,7 +67,8 @@ def readiness(workflow, manifest: dict | None = None) -> dict:
                 conn.row_factory = sqlite3.Row
                 profiles = {role: task.assignee for role, tid in manifest["rounds"][-1]["tasks"].items()
                             if (task := workflow.kb.get_task(conn, tid)) is not None}
-    for role in ("researcher", "builder", "reviewer", "orchestrator"):
+    roles = workflow.roles(manifest) if manifest else ("researcher", "builder", "tester", "reviewer")
+    for role in roles:
         profile = profiles.get(role, role)
         directory = get_profile_dir(profile)
         config = read_yaml(directory / "config.yaml")

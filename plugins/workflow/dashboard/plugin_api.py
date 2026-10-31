@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
-ROLES = ("researcher", "builder", "reviewer", "orchestrator")
+ROLES = ("researcher", "builder", "tester", "reviewer")
 
 
 def require_session(request: Request) -> None:
@@ -62,13 +62,13 @@ class ModelParameters(BaseModel):
 
 
 class ModelConnection(ModelParameters):
-    role: Literal["all", "researcher", "builder", "reviewer", "orchestrator"] = "all"
+    role: Literal["all", "researcher", "builder", "tester", "reviewer", "orchestrator"] = "all"
     execution: str = ""
 
 
 class ModelBatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    connections: dict[Literal["researcher", "builder", "reviewer", "orchestrator"], ModelParameters] = Field(min_length=1)
+    connections: dict[Literal["researcher", "builder", "tester", "reviewer", "orchestrator"], ModelParameters] = Field(min_length=1)
     execution: str = ""
 
 
@@ -124,7 +124,8 @@ def save_model_connection(request: Request, body: ModelConnection):
     try:
         require_action(request, settings)
         workflow = bound_workflow(settings)
-        roles = list(ROLES) if body.role == "all" else [body.role]
+        manifest = load_manifest(settings, body.execution) if body.execution else None
+        roles = list(workflow.roles(manifest)) if body.role == "all" else [body.role]
         models_module().ensure_profiles(workflow, roles)
         profiles = list(roles)
         if body.execution:
@@ -234,19 +235,50 @@ def load_manifest(settings: dict, execution: str) -> dict:
     return manifest
 
 
-def task_summary(conn, task_id: str) -> dict:
+def skill_usage(run) -> dict:
+    from hermes_cli.profiles import get_profile_dir
+    from hermes_state import SessionDB
+
+    session_id = (run.metadata or {}).get("worker_session_id") if run else None
+    if not session_id:
+        return {"skills_used": [], "skills_recorded": False}
+    database = get_profile_dir(run.profile) / "state.db"
+    if not database.is_file():
+        return {"skills_used": [], "skills_recorded": False}
+    db = SessionDB(db_path=database, read_only=True)
+    try:
+        messages = db.get_messages(session_id, include_compacted=True, include_ancestors=True)
+    finally:
+        db.close()
+    skills = []
+    for message in messages:
+        if message.get("role") == "tool" and message.get("tool_name") == "skill_view":
+            result = json.loads(message["content"])
+            if result.get("success") and result.get("name") and result["name"] not in skills:
+                skills.append(result["name"])
+    return {"skills_used": skills, "skills_recorded": bool(messages)}
+
+
+def task_summary(conn, task_id: str, *, include_output: bool = False) -> dict:
     from hermes_cli import kanban_db as kb
     task = kb.get_task(conn, task_id)
     if task is None:
         return {"id": task_id, "status": "missing", "outcome": None}
     run = kb.latest_run(conn, task_id)
-    return {"id": task.id, "status": task.status, "assignee": task.assignee,
+    data = {"id": task.id, "status": task.status, "assignee": task.assignee,
             "started_at": task.started_at, "completed_at": task.completed_at,
             "max_runtime_seconds": task.max_runtime_seconds,
             "outcome": run.outcome if run else None}
+    if include_output:
+        metadata = run.metadata or {} if run else {}
+        if isinstance(metadata, str):
+            metadata = json.loads(metadata)
+        data.update(result=run.summary if run else task.result, verification=metadata.get("verification"),
+                    verdict=metadata.get("verdict"), **skill_usage(run))
+    return data
 
 
-def summary(settings: dict, manifest: dict) -> dict:
+def summary(settings: dict, manifest: dict, *, include_output: bool = False) -> dict:
     from hermes_cli import kanban_db as kb
     database = kb.kanban_db_path(board=manifest["board"])
     rounds = []
@@ -256,8 +288,11 @@ def summary(settings: dict, manifest: dict) -> dict:
             conn.row_factory = sqlite3.Row
             for row in manifest["rounds"]:
                 rounds.append({"number": row["number"], "tasks": {
-                    role: task_summary(conn, tid) for role, tid in row["tasks"].items()}})
+                    role: task_summary(conn, tid, include_output=include_output and row == manifest["rounds"][-1])
+                    for role, tid in row["tasks"].items()}})
     return {"execution_id": manifest["execution_id"], "objective": manifest["objective"],
+            "workflow_version": manifest.get("workflow_version", 1),
+            "workflow_state": manifest.get("workflow_state"),
             "instance": manifest.get("instance", ""), "created_at": manifest["created_at"],
             "source_revision": manifest["source_revision"], "board": manifest["board"],
             "approved_write": manifest["approved_write"], "rounds": rounds,
@@ -269,11 +304,11 @@ def metadata():
     settings = read_settings()
     env = bound_environment(settings)
     enabled = settings.get("allow_actions") is True
-    return {"name": "Hermes Workflow", "version": "0.4.0", "phase": "P0_PARTIAL_PASS",
+    return {"name": "Hermes Workflow", "version": "0.7.0", "phase": "P0_PARTIAL_PASS",
             "project_name": Path(env["PROJECT_DIR"]).name, "board": env["BOARD_SLUG"],
             "actions_enabled": enabled,
             "model_connections_supported": importlib.util.find_spec("hermes_cli.provider_catalog") is not None,
-            "readiness": bound_workflow(settings).readiness() if enabled else None,
+            "readiness": None,
             "limitations": ["模型调用次数与实际费用硬限额尚未完成。", "真实 Worker 隔离与服务级恢复仍待验证。"],
             "unknown_cost": True}
 
@@ -296,7 +331,7 @@ def executions():
 def execution_details(execution: str):
     settings = read_settings()
     manifest = load_manifest(settings, execution)
-    data = summary(settings, manifest)
+    data = summary(settings, manifest, include_output=True)
     if not data["rounds"] or any(task["status"] == "missing" for row in data["rounds"] for task in row["tasks"].values()):
         raise HTTPException(409, "原生任务数据库或任务记录缺失，无法核验本次执行。")
     workflow = bound_workflow(settings)
@@ -305,9 +340,11 @@ def execution_details(execution: str):
     except (ValueError, OSError, sqlite3.Error) as exc:
         raise HTTPException(409, "无法核验执行记录，请检查项目、任务数据库与证据文件。") from exc
     row = manifest["rounds"][-1]
+    needs_setup = manifest.get("workflow_version", 1) < 2 or not row.get("started_at")
     data.update(acceptance=state["acceptance"], budget=state["budget"], failures=state["failures"],
+                workflow_state=state.get("workflow_state"),
                 approval=manifest.get("approval"),
-                readiness=workflow.readiness(execution) if settings.get("allow_actions") is True else None,
+                readiness=workflow.readiness(execution) if settings.get("allow_actions") is True and needs_setup else None,
                 candidate_revision=row.get("candidate_revision"), candidate_digest=row.get("candidate_digest"),
                 changed_files=sorted(row.get("candidate_files", {}).keys() - manifest["source_files"].keys())
                 + sorted(key for key in manifest["source_files"] if row.get("candidate_files", {}).get(key) != manifest["source_files"][key])
@@ -316,7 +353,7 @@ def execution_details(execution: str):
 
 
 @router.get("/executions/{execution}/evidence/{round_number}/{role}")
-def evidence(execution: str, round_number: int, role: Literal["builder", "reviewer"]):
+def evidence(execution: str, round_number: int, role: Literal["builder", "reviewer", "platform"]):
     settings = read_settings()
     manifest = load_manifest(settings, execution)
     if round_number not in [row["number"] for row in manifest["rounds"]]:
@@ -371,9 +408,9 @@ def submit(request: Request, body: Submission):
 
 @router.post("/executions/{execution}/actions/{action}")
 def run_action(request: Request, execution: str,
-               action: Literal["approve", "launch", "start", "prepare-review", "verify-builder", "verify-reviewer", "accept", "repair"], body: Action):
+               action: Literal["approve", "advance", "launch", "start", "prepare-review", "verify-builder", "verify-reviewer", "accept", "repair"], body: Action):
     settings = read_settings()
-    load_manifest(settings, execution)
+    manifest = load_manifest(settings, execution)
     try:
         require_action(request, settings, body.confirmed)
         workflow = bound_workflow(settings)
@@ -381,6 +418,10 @@ def run_action(request: Request, execution: str,
             raise HTTPException(400, "请刷新并确认当前执行轮次。")
         if action == "approve":
             workflow.approve(execution, expected_round=body.round_number)
+            if manifest.get("workflow_version", 1) >= 2:
+                return {**workflow.advance(execution), "action": action}
+        elif action == "advance":
+            return {**workflow.advance(execution), "action": action}
         elif action in {"launch", "start"}:
             # Preserve the legacy URL as an alias, including the separate approval/readiness gate.
             return {**workflow.launch(execution, expected_round=body.round_number), "action": action, "completed": True}
@@ -392,6 +433,8 @@ def run_action(request: Request, execution: str,
                 raise HTTPException(409, "验证没有通过，请查看执行证据。")
         elif action == "repair":
             workflow.repair(execution, body.kind, body.reason)
+            return {"execution_id": execution, "action": action, "completed": True,
+                    "round_number": workflow.load(execution)["rounds"][-1]["number"]}
         else:
             workflow.accept(execution)
         return {"execution_id": execution, "action": action, "completed": True}
