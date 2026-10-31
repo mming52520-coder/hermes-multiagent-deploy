@@ -178,14 +178,33 @@ def deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
 def read_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    import yaml
-
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    try:
+        import yaml
+    except ModuleNotFoundError as exc:
+        if exc.name != "yaml":
+            raise
+        # v0.22.5 ships ruamel instead of PyYAML; use its existing dependency.
+        from ruamel.yaml import YAML
+        data = YAML(typ="safe").load(path.read_text(encoding="utf-8"))
+    else:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
     return data if isinstance(data, dict) else {}
 
 
 def write_yaml(path: Path, data: dict[str, Any]) -> None:
-    # Only configuration writes need PyYAML; read-only Dashboard routes do not.
+    try:
+        from hermes_cli import config as native_config
+    except ModuleNotFoundError as exc:
+        if exc.name != "hermes_cli":
+            raise
+        native_config = None
+    native_write = getattr(native_config, "atomic_config_replace", None)
+    if native_write is not None:
+        # Callers supply the complete state; removing stale provider/tool entries is deliberate.
+        path.parent.mkdir(parents=True, exist_ok=True)
+        native_write(path, data)
+        path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        return
     import yaml
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -296,6 +315,10 @@ def worker_mounts(
         workspace = workspace.resolve()
         if workspace == project_dir or workspace in project_dir.parents or project_dir in workspace.parents:
             raise ValueError("workspace must be separate from the original project")
+        if workspace.is_relative_to(kanban_root) or kanban_root.is_relative_to(workspace):
+            raise ValueError("workspace must be separate from shared Kanban storage")
+        if output_dir.is_relative_to(workspace) or workspace.is_relative_to(output_dir):
+            raise ValueError("writable output must not overlap the candidate workspace")
         if ':' in str(workspace) or (workspace / ".git").is_symlink() or not (workspace / ".git").is_dir():
             raise ValueError("workspace requires an independent Git clone, not shared worktree metadata")
         mounts.append(f"{workspace}:{workspace}:{'rw' if profile == 'builder' else 'ro'}")

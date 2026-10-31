@@ -21,10 +21,12 @@ import time
 
 if __package__:
     from .configure_profiles import load_env_file, read_yaml, worker_mounts, write_yaml
-    from .hermes_baseline import verify_source
+    from .hermes_baseline import verify_workflow_source as verify_source
+    from . import workflow_runtime
 else:
     from configure_profiles import load_env_file, read_yaml, worker_mounts, write_yaml
-    from hermes_baseline import verify_source
+    from hermes_baseline import verify_workflow_source as verify_source
+    import workflow_runtime
 
 ROLES = ("researcher", "builder", "reviewer", "orchestrator")
 FAILURE_KINDS = {"implementation", "test", "environment", "api_model", "permission", "requirements"}
@@ -89,6 +91,13 @@ class Workflow:
         self.project = Path(env["PROJECT_DIR"]).resolve()
         self.board = env["BOARD_SLUG"]
         self.store = self.root / "workflow" / "executions"
+        exposed_paths = [self.project]
+        if env.get("OUTPUT_DIR"):
+            exposed_paths.append(Path(env["OUTPUT_DIR"]).resolve())
+        for exposed in exposed_paths:
+            operator = self.store.parent
+            if exposed.is_relative_to(operator) or operator.is_relative_to(exposed):
+                raise Rejected("project and output must not expose operator records")
         self.store.mkdir(parents=True, exist_ok=True, mode=0o700)
 
     def path(self, execution: str) -> Path:
@@ -133,6 +142,8 @@ class Workflow:
         if not profile.exists():
             create_profile(name, clone_from=role, no_alias=True)
         config = read_yaml(profile / "config.yaml")
+        config.setdefault("terminal", {})
+        config.setdefault("platform_toolsets", {})
         if role == "orchestrator":
             config["toolsets"] = ["kanban","memory","session_search","todo","clarify","skills"]
             config["platform_toolsets"]["cli"] = list(config["toolsets"])
@@ -172,6 +183,8 @@ class Workflow:
             row["tasks"]["researcher"] = manifest["rounds"][0]["tasks"]["researcher"]
         # Persist each native ID immediately. Native idempotency handles a crash
         # between create_task and this write; completed IDs stay in the manifest.
+        # Revoke the previous round's grant before persisting or creating cards.
+        manifest["approved_write"] = False
         manifest["rounds"].append(row)
         self.save(manifest)
         self.populate_round(manifest, row, conn, parent)
@@ -214,11 +227,14 @@ class Workflow:
             previous = tid
 
     def submit(self, objective: str, instance: str = "") -> dict:
+        for key in ("OUTPUT_DIR", "DOCKER_IMAGE"):
+            if not self.env.get(key):
+                raise Rejected(f"项目绑定配置缺少 {key}")
         revision = git(self.project, "rev-parse", "HEAD")
         execution = execution_identity(objective, revision, instance)
         with self.locked(execution):
             manifest_file = self.path(execution) / "execution.json"
-            with self.kb.connect_closing(board=self.board) as conn:
+            with workflow_runtime.connect_closing(board=self.board) as conn:
                 if manifest_file.exists():
                     manifest = self.load(execution)
                     if manifest["rounds"]:
@@ -245,23 +261,90 @@ class Workflow:
                 self.new_round(manifest, conn)
                 return manifest
 
-    def start(self, execution: str, approve_write: bool) -> dict:
-        with self.locked(execution), self.kb.connect_closing(board=self.board) as conn:
+    def start(self, execution: str, approve_write: bool, *, approved_round: int | None = None) -> dict:
+        with self.locked(execution), workflow_runtime.connect_closing(board=self.board) as conn:
             manifest = self.load(execution)
+            if approved_round is not None and (not manifest["approved_write"] or manifest["rounds"][-1]["number"] != approved_round):
+                raise Rejected("WRITE_NOT_APPROVED: the current round requires fresh approval")
             self.budget(manifest, conn, new_work=True)
             if not approve_write:
                 raise Rejected("WRITE_NOT_APPROVED: explicit operator --approve-write required")
             if not manifest["test_command"].strip():
                 raise Rejected("configure a meaningful WORKFLOW_TEST_COMMAND before authorizing work")
             row = manifest["rounds"][-1]
-            if any(self.kb.get_task(conn,tid).status == "running" for tid in row["tasks"].values()):
-                raise Rejected("a worker is already running; do not change its mounted permissions")
-            self.scoped_profile("builder",execution,row["number"],Path(row["candidate"]),writable=True)
-            manifest["approved_write"] = True
-            self.save(manifest)
+            if "candidate_digest" in row:
+                raise Rejected("review already prepared; use a new repair round for further changes")
+            if not manifest["approved_write"]:
+                if any(self.kb.get_task(conn,tid).status == "running" for tid in row["tasks"].values()):
+                    raise Rejected("a worker is already running; do not change its mounted permissions")
+                self.scoped_profile("builder",execution,row["number"],Path(row["candidate"]),writable=True)
+                manifest["approved_write"] = True
+                self.save(manifest)
+            # A retried start only releases remaining triage cards. It must not
+            # rewrite a profile that a previously released worker is using.
             for role in ("researcher", "builder"):
                 self.kb.specify_triage_task(conn,row["tasks"][role],author="operator")
             return manifest
+
+    def approve(self, execution: str, *, expected_round: int | None = None) -> dict:
+        """Grant this round only; keep every native card in triage until launch."""
+        with self.locked(execution), workflow_runtime.connect_closing(board=self.board) as conn:
+            manifest = self.load(execution)
+            if expected_round is not None and manifest["rounds"][-1]["number"] != expected_round:
+                raise Rejected("ROUND_CHANGED: review the current round before approving")
+            self.budget(manifest, conn, new_work=True)
+            row = manifest["rounds"][-1]
+            if "candidate_digest" in row:
+                raise Rejected("review already prepared; use a new repair round for further changes")
+            if not manifest["approved_write"]:
+                if any(self.kb.get_task(conn, tid).status == "running" for tid in row["tasks"].values()):
+                    raise Rejected("a worker is already running; do not change its mounted permissions")
+                self.scoped_profile("builder", execution, row["number"], Path(row["candidate"]), writable=True)
+                manifest["approved_write"] = True
+                manifest["approval"] = {"at": time.time(), "source_revision": manifest["source_revision"], "round": row["number"]}
+                self.save(manifest)
+                self.kb.add_comment(conn, row["tasks"]["researcher"], author="operator", body="Human approval recorded; execution has not been started.")
+            return manifest
+
+    def readiness(self, execution: str | None = None) -> dict:
+        with workflow_runtime.home_scope(self.root):
+            manifest = self.load(execution) if execution else None
+            result = workflow_runtime.readiness(self, manifest)
+            try:
+                revision = git(self.project, "rev-parse", "HEAD")
+                clean = not git(self.project, "status", "--porcelain")
+                source_ready = clean and (manifest is None or revision == manifest["source_revision"])
+            except (OSError, subprocess.CalledProcessError):
+                revision = None
+                source_ready = False
+            result["checks"].insert(0, {"code": "project", "label": "项目源版本", "ready": source_ready,
+                                       "revision": revision,
+                                       "detail": "使用干净且版本一致的项目；候选修改保存在独立副本。"})
+            result["ready"] = result["ready"] and source_ready
+            return result
+
+    def launch(self, execution: str, *, expected_round: int | None = None) -> dict:
+        # Readiness is checked before releasing cards; failed checks leave them in triage.
+        manifest = self.load(execution)
+        if expected_round is not None and manifest["rounds"][-1]["number"] != expected_round:
+            raise Rejected("ROUND_CHANGED: review the current round before launching")
+        if not manifest["approved_write"]:
+            raise Rejected("WRITE_NOT_APPROVED")
+        checks = self.readiness(execution)
+        if not checks["ready"]:
+            missing = "; ".join(item["label"] + ": " + item["detail"] for item in checks["checks"] if not item["ready"])
+            raise Rejected("EXECUTION_NOT_READY: " + missing)
+        number = manifest["rounds"][-1]["number"]
+        if "candidate_digest" not in manifest["rounds"][-1]:
+            self.start(execution, approve_write=True, approved_round=number)
+        else:
+            with self.locked(execution), workflow_runtime.connect_closing(board=self.board) as conn:
+                current = self.load(execution)
+                if not current["approved_write"] or current["rounds"][-1]["number"] != number:
+                    raise Rejected("WRITE_NOT_APPROVED")
+                self.budget(current, conn)
+        result = workflow_runtime.dispatch(self)
+        return {"execution_id": execution, "dispatch": result}
 
     def completed_metadata(self, conn, task: str) -> dict:
         item = self.kb.get_task(conn, task)
@@ -271,7 +354,7 @@ class Workflow:
         return json.loads(run.metadata or "{}") if isinstance(run.metadata, str) else (run.metadata or {})
 
     def prepare_review(self, execution: str) -> dict:
-        with self.locked(execution), self.kb.connect_closing(board=self.board) as conn:
+        with self.locked(execution), workflow_runtime.connect_closing(board=self.board) as conn:
             manifest = self.load(execution)
             self.budget(manifest, conn)
             row = manifest["rounds"][-1]
@@ -279,18 +362,28 @@ class Workflow:
                 raise Rejected("WRITE_NOT_APPROVED")
             self.completed_metadata(conn, row["tasks"]["builder"])
             reviewer = self.kb.get_task(conn, row["tasks"]["reviewer"])
-            if reviewer.status != "triage":
-                raise Rejected("review already released; do not replace its candidate snapshot")
             candidate, review = Path(row["candidate"]), Path(row["review"])
             if (candidate / ".git").is_symlink() or not (candidate / ".git").is_dir():
                 raise Rejected("candidate lost its independent Git metadata")
-            # Only replace our own unpublished, per-round snapshot.
-            shutil.rmtree(review)
-            shutil.copytree(candidate, review, symlinks=True)
-            row["candidate_revision"] = git(candidate, "rev-parse", "HEAD")
-            row["candidate_files"] = tree_files(candidate)
-            row["candidate_digest"] = digest(row["candidate_files"])
-            self.save(manifest)
+            if "candidate_digest" in row:
+                # Resume a partial release without replacing a published copy.
+                if any(git(path,"rev-parse","HEAD") != row["candidate_revision"]
+                       or digest(tree_files(path)) != row["candidate_digest"] for path in (candidate,review)):
+                    raise Rejected("candidate/review snapshot changed after preparation")
+            else:
+                if reviewer.status != "triage":
+                    raise Rejected("review already released; do not replace its candidate snapshot")
+                revision, files = git(candidate,"rev-parse","HEAD"), tree_files(candidate)
+                # Only replace our own unpublished, per-round snapshot.
+                shutil.rmtree(review)
+                shutil.copytree(candidate, review, symlinks=True)
+                if any(git(path,"rev-parse","HEAD") != revision or tree_files(path) != files
+                       for path in (candidate,review)):
+                    raise Rejected("candidate/review snapshot changed during preparation")
+                row["candidate_revision"] = revision
+                row["candidate_files"] = files
+                row["candidate_digest"] = digest(files)
+                self.save(manifest)
             for role in ("reviewer", "orchestrator"):
                 self.kb.specify_triage_task(conn,row["tasks"][role],author="operator")
             return manifest
@@ -298,7 +391,7 @@ class Workflow:
     def verify(self, execution: str, role: str, runner=subprocess.run) -> dict:
         if role not in {"builder", "reviewer"}:
             raise Rejected("only builder and reviewer have verification receipts")
-        with self.locked(execution), self.kb.connect_closing(board=self.board) as conn:
+        with self.locked(execution), workflow_runtime.connect_closing(board=self.board) as conn:
             manifest = self.load(execution)
             self.budget(manifest, conn)
             row = manifest["rounds"][-1]
@@ -396,6 +489,8 @@ class Workflow:
                 raise Rejected(f"{role} missing operator verification receipt")
             receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
             log = directory / f"{role}-verification.log"
+            if not log.is_file():
+                raise Rejected(f"{role} missing operator verification log")
             expected = {"execution_id":manifest["execution_id"], "task_id":row["tasks"][role],
                         "run_id":self.kb.latest_run(conn,row["tasks"][role]).id,
                         "role":role, "candidate_digest":row["candidate_digest"],
@@ -415,7 +510,7 @@ class Workflow:
                 "verification_receipts":refs, "accepted_at":time.time(), "actual_api_cost_usd":None}
 
     def accept(self, execution: str) -> dict:
-        with self.locked(execution), self.kb.connect_closing(board=self.board) as conn:
+        with self.locked(execution), workflow_runtime.connect_closing(board=self.board) as conn:
             result = self.acceptance(self.load(execution), conn)
             write_json(self.path(execution) / "acceptance.json", result)
             self.kb.add_comment(conn, self.load(execution)["rounds"][-1]["tasks"]["orchestrator"],
@@ -425,26 +520,30 @@ class Workflow:
     def repair(self, execution: str, kind: str, reason: str) -> dict:
         if kind not in FAILURE_KINDS or not reason.strip():
             raise Rejected("a classified, concrete failure reason is required")
-        with self.locked(execution), self.kb.connect_closing(board=self.board) as conn:
+        if kind not in {"implementation","test"}:
+            raise Rejected(f"HUMAN_REQUIRED: {kind}; automatic code repair is inappropriate")
+        with self.locked(execution), workflow_runtime.connect_closing(board=self.board) as conn:
             manifest = self.load(execution)
             self.budget(manifest, conn, new_work=True)
             row = manifest["rounds"][-1]
             if any(self.kb.get_task(conn,tid).status == "running" for r in manifest["rounds"] for tid in r["tasks"].values()):
                 raise Rejected("active workers must terminate before repair")
+            if row.get("parent") and not manifest["approved_write"]:
+                # The prior FAIL was already recorded. Resume its card creation
+                # after a crash instead of consuming another repair round.
+                self.populate_round(manifest,row,conn)
+                return manifest
             review = self.completed_metadata(conn, row["tasks"]["reviewer"])
             if review.get("verdict") != "FAIL":
                 raise Rejected("repair requires a completed Reviewer FAIL")
             # Changing the repair request prose must not hide the same review.
             fingerprint = digest([kind,review.get("findings")])
-            if kind not in {"implementation","test"}:
-                raise Rejected(f"HUMAN_REQUIRED: {kind}; automatic code repair is inappropriate")
             if fingerprint in [item["fingerprint"] for item in manifest["failures"]]:
                 raise Rejected("REPEATED_FAILURE: human intervention required")
             if len(manifest["rounds"]) - 1 >= manifest["budget"]["max_rounds"]:
                 raise Rejected("REPAIR_BUDGET: maximum repair rounds reached")
             manifest["failures"].append({"kind":kind,"reason":reason,"fingerprint":fingerprint,"at":time.time()})
             self.new_round(manifest, conn, row["tasks"]["reviewer"])
-            manifest["approved_write"] = False
             self.save(manifest)
             return manifest
 
@@ -470,7 +569,7 @@ class Workflow:
                 accepted = {"status":"NOT_ACCEPTED","reason":str(exc)}
             return {"execution_id":execution,"acceptance":accepted,
                     "rounds":[{"number":row["number"],"tasks":{
-                        role:{"id":tid,"status":self.kb.get_task(conn,tid).status}
+                        role:{"id":tid,"status":task.status if (task := self.kb.get_task(conn,tid)) else "missing"}
                         for role,tid in row["tasks"].items()}} for row in manifest["rounds"]],
                     "budget":manifest["budget"],"actual_api_cost_usd":None,"failures":manifest["failures"]}
 

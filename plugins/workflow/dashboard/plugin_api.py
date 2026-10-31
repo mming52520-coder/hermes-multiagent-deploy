@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import hashlib
+from contextlib import closing
 import importlib
+import importlib.util
 import json
 from pathlib import Path
 import re
@@ -14,7 +16,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 ROLES = ("researcher", "builder", "reviewer", "orchestrator")
@@ -26,7 +28,14 @@ def require_session(request: Request) -> None:
     _require_token(request)
 
 
-router = APIRouter(dependencies=[Depends(require_session)])
+async def workflow_home_scope():
+    # The host's profile picker must not retarget the server-bound workflow board.
+    settings = read_settings()
+    with core_module().workflow_runtime.home_scope(Path(settings["hermes_home"])):
+        yield
+
+
+router = APIRouter(dependencies=[Depends(require_session), Depends(workflow_home_scope)])
 
 
 class Submission(BaseModel):
@@ -38,8 +47,29 @@ class Submission(BaseModel):
 class Action(BaseModel):
     model_config = ConfigDict(extra="forbid")
     confirmed: bool = False
+    round_number: int | None = Field(default=None, ge=0)
     kind: Literal["implementation", "test", "environment", "api_model", "permission", "requirements"] = "implementation"
     reason: str = Field(default="", max_length=2000)
+
+
+class ModelParameters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider: str
+    model: str = ""
+    api_key: SecretStr = SecretStr("")
+    base_url: str = ""
+    protocol: Literal["chat_completions", "codex_responses", "anthropic_messages"] = "chat_completions"
+
+
+class ModelConnection(ModelParameters):
+    role: Literal["all", "researcher", "builder", "reviewer", "orchestrator"] = "all"
+    execution: str = ""
+
+
+class ModelBatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    connections: dict[Literal["researcher", "builder", "reviewer", "orchestrator"], ModelParameters] = Field(min_length=1)
+    execution: str = ""
 
 
 def read_settings() -> dict:
@@ -63,6 +93,112 @@ def core_module():
 def bound_workflow(settings: dict):
     core = core_module()
     return core.Workflow(Path(settings["hermes_home"]), bound_environment(settings))
+
+
+def models_module():
+    if importlib.util.find_spec("hermes_cli.provider_catalog") is None:
+        raise HTTPException(503, "模型连接设置需要 Hermes v0.22.5。")
+    return importlib.import_module(core_module().__package__ + ".workflow_models")
+
+
+@router.get("/model-connection")
+def model_connections(execution: str = ""):
+    settings = read_settings()
+    models = models_module()
+    profiles = dict(zip(ROLES, ROLES))
+    if execution:
+        from hermes_cli import kanban_db as kb
+        manifest = load_manifest(settings, execution)
+        database = kb.kanban_db_path(board=manifest["board"])
+        with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+            conn.row_factory = sqlite3.Row
+            profiles = {role: kb.get_task(conn, tid).assignee for role, tid in manifest["rounds"][-1]["tasks"].items()}
+    home = Path(settings["hermes_home"])
+    return {"providers": models.catalog(), "roles": {
+        role: models.profile_settings(home, profile) for role, profile in profiles.items()}}
+
+
+@router.put("/model-connection")
+def save_model_connection(request: Request, body: ModelConnection):
+    settings = read_settings()
+    try:
+        require_action(request, settings)
+        workflow = bound_workflow(settings)
+        roles = list(ROLES) if body.role == "all" else [body.role]
+        models_module().ensure_profiles(workflow, roles)
+        profiles = list(roles)
+        if body.execution:
+            from hermes_cli import kanban_db as kb
+            load_manifest(settings, body.execution)
+            with workflow.locked(body.execution), core_module().workflow_runtime.connect_closing(board=workflow.board) as conn:
+                manifest = workflow.load(body.execution)
+                tasks = {role: kb.get_task(conn, tid) for role, tid in manifest["rounds"][-1]["tasks"].items()}
+                if any(task.status != "triage" for task in tasks.values()):
+                    raise HTTPException(409, "当前目标已启动；请为后续目标配置模型。")
+                profiles.extend(tasks[role].assignee for role in roles)
+                result = models_module().save(workflow.root, profiles, provider=body.provider,
+                    model=body.model, api_key=body.api_key.get_secret_value(), base_url=body.base_url, protocol=body.protocol)
+                manifest["approved_write"] = False
+                manifest.pop("approval", None)
+                workflow.save(manifest)
+        else:
+            result = models_module().save(workflow.root, profiles, provider=body.provider,
+                model=body.model, api_key=body.api_key.get_secret_value(), base_url=body.base_url, protocol=body.protocol)
+        return {"saved": True, "roles": roles, "connections": result, "requires_approval": bool(body.execution)}
+    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post("/model-connections/models")
+def discover_role_models(request: Request, body: ModelBatch):
+    settings = read_settings()
+    try:
+        require_action(request, settings)
+        workflow = bound_workflow(settings)
+        models = models_module()
+        models.ensure_profiles(workflow, list(body.connections))
+    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+    results = {}
+    for role, values in body.connections.items():
+        try:
+            results[role] = models.discover(role, provider=values.provider,
+                api_key=values.api_key.get_secret_value(), base_url=values.base_url, protocol=values.protocol)
+        except (ValueError, OSError) as exc:
+            results[role] = {"error": str(exc)}
+    return {"roles": results}
+
+
+@router.put("/model-connections")
+def save_role_models(request: Request, body: ModelBatch):
+    settings = read_settings()
+    try:
+        require_action(request, settings)
+        workflow = bound_workflow(settings)
+        models = models_module()
+        models.ensure_profiles(workflow, list(body.connections))
+        values = {role: {**entry.model_dump(exclude={"api_key"}), "api_key": entry.api_key.get_secret_value()}
+                  for role, entry in body.connections.items()}
+        targets = {role: [role] for role in values}
+        if body.execution:
+            from hermes_cli import kanban_db as kb
+            load_manifest(settings, body.execution)
+            with workflow.locked(body.execution), core_module().workflow_runtime.connect_closing(board=workflow.board) as conn:
+                manifest = workflow.load(body.execution)
+                tasks = {role: kb.get_task(conn, tid) for role, tid in manifest["rounds"][-1]["tasks"].items()}
+                if any(task.status != "triage" for task in tasks.values()):
+                    raise HTTPException(409, "当前目标已启动；请为后续目标配置模型。")
+                for role in targets:
+                    targets[role].append(tasks[role].assignee)
+                result = models.save_batch(workflow.root, targets, values)
+                manifest["approved_write"] = False
+                manifest.pop("approval", None)
+                workflow.save(manifest)
+        else:
+            result = models.save_batch(workflow.root, targets, values)
+        return {"saved": True, "roles": list(values), "connections": result, "requires_approval": bool(body.execution)}
+    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 def bound_environment(settings: dict) -> dict:
@@ -116,7 +252,7 @@ def summary(settings: dict, manifest: dict) -> dict:
     rounds = []
     # Browse the existing native DB without creating/migrating a board on GET.
     if database.is_file():
-        with sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True) as conn:
+        with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
             conn.row_factory = sqlite3.Row
             for row in manifest["rounds"]:
                 rounds.append({"number": row["number"], "tasks": {
@@ -132,9 +268,12 @@ def summary(settings: dict, manifest: dict) -> dict:
 def metadata():
     settings = read_settings()
     env = bound_environment(settings)
-    return {"name": "Hermes Workflow", "version": "0.1.0", "phase": "P0_PARTIAL_PASS",
+    enabled = settings.get("allow_actions") is True
+    return {"name": "Hermes Workflow", "version": "0.4.0", "phase": "P0_PARTIAL_PASS",
             "project_name": Path(env["PROJECT_DIR"]).name, "board": env["BOARD_SLUG"],
-            "actions_enabled": settings.get("allow_actions") is True,
+            "actions_enabled": enabled,
+            "model_connections_supported": importlib.util.find_spec("hermes_cli.provider_catalog") is not None,
+            "readiness": bound_workflow(settings).readiness() if enabled else None,
             "limitations": ["模型调用次数与实际费用硬限额尚未完成。", "真实 Worker 隔离与服务级恢复仍待验证。"],
             "unknown_cost": True}
 
@@ -167,6 +306,8 @@ def execution_details(execution: str):
         raise HTTPException(409, "无法核验执行记录，请检查项目、任务数据库与证据文件。") from exc
     row = manifest["rounds"][-1]
     data.update(acceptance=state["acceptance"], budget=state["budget"], failures=state["failures"],
+                approval=manifest.get("approval"),
+                readiness=workflow.readiness(execution) if settings.get("allow_actions") is True else None,
                 candidate_revision=row.get("candidate_revision"), candidate_digest=row.get("candidate_digest"),
                 changed_files=sorted(row.get("candidate_files", {}).keys() - manifest["source_files"].keys())
                 + sorted(key for key in manifest["source_files"] if row.get("candidate_files", {}).get(key) != manifest["source_files"][key])
@@ -230,14 +371,19 @@ def submit(request: Request, body: Submission):
 
 @router.post("/executions/{execution}/actions/{action}")
 def run_action(request: Request, execution: str,
-               action: Literal["start", "prepare-review", "verify-builder", "verify-reviewer", "accept", "repair"], body: Action):
+               action: Literal["approve", "launch", "start", "prepare-review", "verify-builder", "verify-reviewer", "accept", "repair"], body: Action):
     settings = read_settings()
     load_manifest(settings, execution)
     try:
         require_action(request, settings, body.confirmed)
         workflow = bound_workflow(settings)
-        if action == "start":
-            workflow.start(execution, approve_write=True)
+        if action in {"approve", "launch"} and body.round_number is None:
+            raise HTTPException(400, "请刷新并确认当前执行轮次。")
+        if action == "approve":
+            workflow.approve(execution, expected_round=body.round_number)
+        elif action in {"launch", "start"}:
+            # Preserve the legacy URL as an alias, including the separate approval/readiness gate.
+            return {**workflow.launch(execution, expected_round=body.round_number), "action": action, "completed": True}
         elif action == "prepare-review":
             workflow.prepare_review(execution)
         elif action.startswith("verify-"):

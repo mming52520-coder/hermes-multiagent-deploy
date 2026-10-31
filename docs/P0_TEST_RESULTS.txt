@@ -35,3 +35,78 @@ test_wrong_commit_rejected (test_workflow.WorkflowTest.test_wrong_commit_rejecte
 Ran 32 tests in 18.230s
 
 OK
+
+
+2026-10-30 P0 recovery and mount-boundary regression
+Baseline: codex/chinese-workflow-app@599f3f4c587188a4c06e934529450e90de2f2e93
+Command: PYTHONPATH="$HERMES_SOURCE" HERMES_HOME="$TEST_HOME" HERMES_BASELINE_ARCHIVE="$BASELINE_ARCHIVE" "$TEST_PYTHON" -m unittest discover -s tests -v
+test_source_without_provenance_is_rejected (test_workflow.BaselineTest.test_source_without_provenance_is_rejected) ... ok
+test_wrong_commit_and_unverified_archives_are_rejected (test_workflow.BaselineTest.test_wrong_commit_and_unverified_archives_are_rejected) ... ok
+test_candidate_cannot_be_inside_shared_kanban_storage (test_workflow.MountPolicyTest.test_candidate_cannot_be_inside_shared_kanban_storage) ... ok
+test_original_and_shared_storage_readonly_and_exact_candidate (test_workflow.MountPolicyTest.test_original_and_shared_storage_readonly_and_exact_candidate) ... ok
+test_rejects_shared_git_metadata_and_overlapping_writable_paths (test_workflow.MountPolicyTest.test_rejects_shared_git_metadata_and_overlapping_writable_paths) ... ok
+test_writable_output_cannot_overlap_candidate_in_either_direction (test_workflow.MountPolicyTest.test_writable_output_cannot_overlap_candidate_in_either_direction) ... ok
+test_accepted_history_does_not_expire_as_if_new_work_were_running (test_workflow.WorkflowTest.test_accepted_history_does_not_expire_as_if_new_work_were_running) ... ok
+test_altered_log_rejected (test_workflow.WorkflowTest.test_altered_log_rejected) ... ok
+test_builder_failure_never_releases_review (test_workflow.WorkflowTest.test_builder_failure_never_releases_review) ... ok
+test_candidate_mutation_revokes_acceptance (test_workflow.WorkflowTest.test_candidate_mutation_revokes_acceptance) ... ok
+test_configuration_refresh_preserves_custom_soul_and_provider_routes (test_workflow.WorkflowTest.test_configuration_refresh_preserves_custom_soul_and_provider_routes) ... ok
+test_controlled_repair_reuses_research_and_starts_unapproved (test_workflow.WorkflowTest.test_controlled_repair_reuses_research_and_starts_unapproved) ... ok
+test_default_off_and_no_approval_cannot_write (test_workflow.WorkflowTest.test_default_off_and_no_approval_cannot_write) ... ok
+test_existing_shell_invocation_uses_native_interpreter_and_job_key (test_workflow.WorkflowTest.test_existing_shell_invocation_uses_native_interpreter_and_job_key) ... ok
+test_failed_test_is_not_accepted (test_workflow.WorkflowTest.test_failed_test_is_not_accepted) ... ok
+test_global_time_run_and_unknown_cost_limits (test_workflow.WorkflowTest.test_global_time_run_and_unknown_cost_limits) ... ok
+test_idempotent_completed_execution_and_instances (test_workflow.WorkflowTest.test_idempotent_completed_execution_and_instances) ... ok
+test_interrupted_repair_revokes_previous_round_authorization (test_workflow.WorkflowTest.test_interrupted_repair_revokes_previous_round_authorization) ... ok
+test_irrecoverable_categories_require_human (test_workflow.WorkflowTest.test_irrecoverable_categories_require_human) ... ok
+test_missing_actual_changes_rejected (test_workflow.WorkflowTest.test_missing_actual_changes_rejected) ... ok
+test_missing_native_task_is_reported_in_status (test_workflow.WorkflowTest.test_missing_native_task_is_reported_in_status) ... ok
+test_missing_test_handoff_rejected (test_workflow.WorkflowTest.test_missing_test_handoff_rejected) ... ok
+test_missing_verification_log_is_not_accepted (test_workflow.WorkflowTest.test_missing_verification_log_is_not_accepted) ... ok
+test_native_crashed_worker_trips_existing_failure_limit (test_workflow.WorkflowTest.test_native_crashed_worker_trips_existing_failure_limit) ... ok
+test_native_dispatch_claim_recovery_and_duplicate_dispatch (test_workflow.WorkflowTest.test_native_dispatch_claim_recovery_and_duplicate_dispatch) ... ok
+test_native_docker_arguments_keep_mount_permissions (test_workflow.WorkflowTest.test_native_docker_arguments_keep_mount_permissions) ... ok
+test_native_done_cannot_forge_acceptance (test_workflow.WorkflowTest.test_native_done_cannot_forge_acceptance) ... ok
+test_native_timeout_and_worker_crash_do_not_auto_accept (test_workflow.WorkflowTest.test_native_timeout_and_worker_crash_do_not_auto_accept) ... ok
+test_operator_records_cannot_be_exposed_by_project_or_output (test_workflow.WorkflowTest.test_operator_records_cannot_be_exposed_by_project_or_output) ... ok
+test_partial_submission_recovers_without_duplicate_native_cards (test_workflow.WorkflowTest.test_partial_submission_recovers_without_duplicate_native_cards) ... ok
+test_pass_requires_explicit_gate_and_current_receipts (test_workflow.WorkflowTest.test_pass_requires_explicit_gate_and_current_receipts) ... ok
+test_prepare_review_does_not_release_a_racing_candidate (test_workflow.WorkflowTest.test_prepare_review_does_not_release_a_racing_candidate) ... ok
+test_prepare_review_retry_rejects_changed_snapshot (test_workflow.WorkflowTest.test_prepare_review_retry_rejects_changed_snapshot) ... ok
+test_prepare_review_retry_releases_gate_without_replacing_snapshot (test_workflow.WorkflowTest.test_prepare_review_retry_releases_gate_without_replacing_snapshot) ... ok
+test_readonly_status_does_not_require_an_output_configuration (test_workflow.WorkflowTest.test_readonly_status_does_not_require_an_output_configuration) ... ok
+test_repair_resumes_after_native_card_creation_without_duplicates (test_workflow.WorkflowTest.test_repair_resumes_after_native_card_creation_without_duplicates) ... ok
+test_repair_round_limit (test_workflow.WorkflowTest.test_repair_round_limit) ... ok
+test_repaired_candidate_can_pass_without_rerunning_research (test_workflow.WorkflowTest.test_repaired_candidate_can_pass_without_rerunning_research) ... ok
+test_repeated_failure_requires_human (test_workflow.WorkflowTest.test_repeated_failure_requires_human) ... ok
+test_reviewer_fail_is_not_accepted (test_workflow.WorkflowTest.test_reviewer_fail_is_not_accepted) ... ok
+test_scoped_profile_cwd_reaches_exact_mount_through_native_config (test_workflow.WorkflowTest.test_scoped_profile_cwd_reaches_exact_mount_through_native_config) ... ok
+test_start_cannot_reopen_a_prepared_review (test_workflow.WorkflowTest.test_start_cannot_reopen_a_prepared_review) ... ok
+test_start_retry_resumes_release_without_rewriting_live_profile (test_workflow.WorkflowTest.test_start_retry_resumes_release_without_rewriting_live_profile) ... ok
+test_status_does_not_recreate_missing_native_database (test_workflow.WorkflowTest.test_status_does_not_recreate_missing_native_database) ... ok
+test_verification_container_has_only_readonly_candidate (test_workflow.WorkflowTest.test_verification_container_has_only_readonly_candidate) ... ok
+test_verification_timeout_is_failure_and_cleans_only_own_container (test_workflow.WorkflowTest.test_verification_timeout_is_failure_and_cleans_only_own_container) ... ok
+test_wrong_commit_rejected (test_workflow.WorkflowTest.test_wrong_commit_rejected) ... ok
+test_action_cannot_reopen_prepared_review (test_workflow_app.ApplicationTest.test_action_cannot_reopen_prepared_review) ... ok
+test_application_is_bound_to_operator_selected_project (test_workflow_app.ApplicationTest.test_application_is_bound_to_operator_selected_project) ... ok
+test_browse_lists_native_states_without_exposing_environment (test_workflow_app.ApplicationTest.test_browse_lists_native_states_without_exposing_environment) ... ok
+test_confirmed_submit_uses_existing_native_four_stage_plan (test_workflow_app.ApplicationTest.test_confirmed_submit_uses_existing_native_four_stage_plan) ... ok
+test_cookie_auth_also_uses_canonical_gate (test_workflow_app.ApplicationTest.test_cookie_auth_also_uses_canonical_gate) ... ok
+test_default_mode_rejects_all_mutations_server_side (test_workflow_app.ApplicationTest.test_default_mode_rejects_all_mutations_server_side) ... ok
+test_evidence_matches_real_operator_record_and_bounds_log_tail (test_workflow_app.ApplicationTest.test_evidence_matches_real_operator_record_and_bounds_log_tail) ... ok
+test_gate_failure_is_preserved_as_http_conflict (test_workflow_app.ApplicationTest.test_gate_failure_is_preserved_as_http_conflict) ... ok
+test_missing_confirmation_and_cross_origin_requests_rejected (test_workflow_app.ApplicationTest.test_missing_confirmation_and_cross_origin_requests_rejected) ... ok
+test_missing_native_database_does_not_create_an_empty_replacement (test_workflow_app.ApplicationTest.test_missing_native_database_does_not_create_an_empty_replacement) ... ok
+test_missing_verification_log_revokes_acceptance_without_a_server_error (test_workflow_app.ApplicationTest.test_missing_verification_log_revokes_acceptance_without_a_server_error) ... ok
+test_native_dashboard_discovers_and_mounts_application (test_workflow_app.ApplicationTest.test_native_dashboard_discovers_and_mounts_application) ... ok
+test_reinstall_preserves_local_settings_and_rejects_edited_assets (test_workflow_app.ApplicationTest.test_reinstall_preserves_local_settings_and_rejects_edited_assets) ... ok
+test_requests_cannot_supply_shell_commands_or_environment_paths (test_workflow_app.ApplicationTest.test_requests_cannot_supply_shell_commands_or_environment_paths) ... ok
+test_requires_actual_dashboard_session (test_workflow_app.ApplicationTest.test_requires_actual_dashboard_session) ... ok
+test_unknown_execution_and_unsupported_evidence_cannot_read_files (test_workflow_app.ApplicationTest.test_unknown_execution_and_unsupported_evidence_cannot_read_files) ... ok
+----------------------------------------------------------------------
+Ran 63 tests in 15.189s
+OK
+Native readonly checks: PASS on v0.18.2 aaf5691 and audited v0.22.5 bf0203a; default in-process mode only.
+Source provenance: PASS, verified-archive for v0.18.2; audited v0.22.5 archive checksum matched.
+Shell bash -n and ShellCheck error level (12 files), Python AST (12 files), workflow JavaScript syntax, git diff --check: PASS.
+Physical Docker, models, Gateway service recovery, browser/frontend rebuild, deployment/upgrade/rollback: NOT_TESTED this iteration. P0 overall PARTIAL_PASS, P1/P2 BLOCKED.

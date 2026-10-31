@@ -13,7 +13,7 @@ import sys
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 ASSETS = ("plugin.yaml", "__init__.py", "dashboard/manifest.json", "dashboard/plugin_api.py", "dashboard/app.js", "dashboard/app.css")
-OPERATOR = ("workflow_control.py", "configure_profiles.py", "hermes_baseline.py")
+OPERATOR = ("workflow_control.py", "configure_profiles.py", "hermes_baseline.py", "workflow_runtime.py", "workflow_models.py")
 
 
 def install(home: Path, env_file: Path, enable: bool = False, archive: Path | None = None) -> Path:
@@ -25,6 +25,8 @@ def install(home: Path, env_file: Path, enable: bool = False, archive: Path | No
         raise ValueError("插件目录是符号链接，为保护已有文件而拒绝覆盖")
     files = {relative: REPOSITORY / "plugins" / "workflow" / relative for relative in ASSETS}
     files.update({f"operator/{name}": REPOSITORY / "scripts" / name for name in OPERATOR})
+    files.update({f"operator/souls/{role}.md": REPOSITORY / "souls" / f"{role}.md"
+                  for role in ("researcher", "builder", "reviewer", "orchestrator")})
     marker = target / ".managed-files.json"
     previous = {}
     if target.exists():
@@ -66,7 +68,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--home", type=Path, default=Path(os.environ.get("HERMES_HOME") or str(Path.home()/".hermes")), help="已有 Hermes 数据根目录")
     parser.add_argument("--env", type=Path, required=True, help="项目与看板的绑定配置文件")
-    parser.add_argument("--archive", type=Path, help="已验证的旧基线源归档，仅供受支持的写入流程校验")
+    parser.add_argument("--archive", type=Path, help="已验证的受支持源码归档，供写入流程校验")
     parser.add_argument("--enable", action="store_true", help="用当前 Hermes 的 Python 调用原生插件启用流程")
     args = parser.parse_args()
     try:

@@ -17,3 +17,90 @@ test_unknown_execution_and_unsupported_evidence_cannot_read_files (test_workflow
 Ran 14 tests in 4.586s
 
 OK
+
+
+2026-10-30: Native v0.22.5 create / approve / launch
+===================================================
+Legacy full regression: 63 tests / 24.914s / OK.
+Modern native contracts: 10 tests / 37.754s / OK, Python 3.14.9.
+Frontend components: 18 tests / 2.002s / OK.
+Modern native read-only discovery, auth, API, mutation denial: PASS.
+Critical Python checks (ruff E9,F63,F7,F82), JS syntax: PASS.
+
+Native source pin: bf0203a794a07aac3ff764972ab9087baa4e4f4e (v0.22.5).
+Deployment scripts retain the original aaf5691 v0.18.2 pin.
+Source/archive verification remains mandatory for every write; no version-string bypass.
+Native APIs: kanban_db_connect, gateway_runtime.ensure_gateway_runtime, kanban_db_dispatch.dispatch_once.
+No alternate task DB, scheduler, daemon, or provider was introduced.
+
+Coverage: native four-card triage creation and idempotence; round-bound human approval
+without release; unauthorized launch and missing prerequisites leave triage unchanged;
+real atomic dispatcher claims with short-lived offline worker doubles; repeated launch
+does not duplicate claims; stale round confirmation rejected; authenticated HTTP create,
+approve and blocked launch; same-origin/confirmation/payload restrictions; profile picker
+cannot change the bound workflow home; original deployment provenance unchanged.
+
+Actual native Dashboard browser: goal creation, four triage stages, explicit approval
+modal with objective/source/round and disabled unconfirmed submit, launch disabled for
+missing Docker/role credentials, bilingual prerequisites, responsive 1280px/390px layouts.
+No horizontal overflow. Browser error log empty. Dialog canceled; goal remains unapproved.
+
+Configuration checks use temporary homes and synthetic credentials.
+P0 PARTIAL_PASS: hard actual cost/call caps and in-flight execution-wide hard stop remain incomplete.
+Gateway startup is doubled only in tests; service recovery and real isolation NOT_VERIFIED.
+
+Release: 86 files / 85 content hashes / 10 managed installer hashes verified; default read-only install PASS.
+SHA-256: b76b8b39e410928508c70e55367e9e1414499b97f2ec6346b181801a1b681979
+Final native DB audit: 1 synthetic review goal, approved_write=false, 4 triage tasks, 0 native runs.
+
+
+2026-10-30: Per-role provider/model/API onboarding (plugin v0.3.0)
+----------------------------------------------------------------
+63 legacy regression checks: PASS / 17.114s.
+20 frontend component checks: PASS / 1.374s.
+3 native model configuration + authenticated HTTP checks: PASS / 4.286s.
+1 first-connection native Profile creation check: PASS / 1.563s.
+Covers shared-key setup, independent provider/model/endpoint overrides, private key
+storage, preserving other role settings, blank-key reuse, synchronizing pending
+profiles and revoking old approval, refusal to mutate an already released target.
+Browser: 4 cards, native provider choices, Anthropic selection, custom protocols,
+password field, 390px form without horizontal overflow. Real keys not entered.
+Sources: Hermes provider_catalog/ProviderProfile/model catalogs; no added SDK/gateway.
+Real inference is outside these isolated configuration checks; operator environments
+require Docker and user-provided credentials.
+
+Native picker inline API/Key setup (2026-10-30):
+44 related Vitest checks PASS / 2.11s; 1 additional native custom-row check PASS / 1.86s.
+Strict TypeScript and Vite builds PASS. Targeted ESLint: 0 errors, 1 existing ChatSidebar Fast Refresh warning.
+Live native MoA picker displays key/model/address form and custom protocols; no live keys or inference used.
+Final local archive generation: 92 files; SHA-256 c32e2ab87cd54546786e61d12b0686ee8311dbc292d86184effad588e1475aba.
+
+Official API defaults + key-only import (2026-10-30):
+46 related Vitest checks PASS / 2.28s, plus 1 new China GLM check PASS / 2.41s.
+Strict TypeScript/Vite build PASS; targeted ESLint clean; git diff --check PASS.
+Browser: default OpenAI API address and Responses format, key-only form, fixed import button, collapsed advanced settings, and China GLM preset observed. No real key entered or inference dispatched.
+Archive: 93 files; generated SHA-256 411ed03a5583013d4bc7998e4dd60a2d2280402bc5a9ba8f6e50f8a5942ec313.
+
+Unified four-agent model configuration v0.4.0 (2026-10-30):
+21 UI checks PASS / 1.360s. 5 native checks passed in the 6-check run (7.586s); Gemini fixture corrected and only that check rerun: PASS / 1.599s.
+Covers role-scoped credentials, local real HTTP catalog requests, import without model assignment, mixed-provider batch save, pending profile key copying and approval revocation, released-target refusal, Gemini headers/pagination, inline editing and retry.
+Browser: four inline rows, no role dialogs, provider/key/model fields, load-all and save controls. No real provider key entered or inference dispatched.
+JS/Python syntax and git diff --check PASS. Native frontend unchanged; broad regressions not repeated.
+Publication package: builder-local compiler receipt excluded; source pin and content
+manifest retained. The downloads sidecar records the current archive checksum.
+
+Publication verification (2026-10-31):
+63 legacy regression tests: PASS.
+16 native v0.22.5 write/model configuration tests: PASS.
+21 React/jsdom workflow component tests: PASS.
+Total: 100 tests, no skips or failures.
+Release bundle: 92 files, 91 manifest entries verified. Native compiler cache
+receipt excluded because it contains builder-local paths; source commit and
+package content manifest retained. See downloads/*.sha256 for the archive hash.
+Publication excludes local working memory, runtime state, provider credentials,
+project-specific business sources and execution artifacts.
+
+Reproduction (set each variable to the corresponding audited environment):
+PYTHONPATH="$LEGACY_SOURCE" HERMES_HOME="$TEST_HOME" HERMES_BASELINE_ARCHIVE="$LEGACY_ARCHIVE" "$LEGACY_PYTHON" -m unittest discover -s tests
+PYTHONPATH="$NATIVE_SOURCE:$PWD/tests" HERMES_HOME="$TEST_HOME" HERMES_BASELINE_ARCHIVE="$NATIVE_ARCHIVE" "$NATIVE_PYTHON" -m unittest check_workflow_writes_v0225 check_workflow_models
+HERMES_FRONTEND_SOURCE="$FRONTEND_SOURCE" node --test tests/workflow_dashboard.test.cjs

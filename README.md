@@ -1,8 +1,16 @@
-# Hermes 多 Agent（Packy + DeepSeek）一键部署手册
+# Hermes 多 Agent 工作流与部署手册
+
+> **v0.4.0 功能更新**：四个 Agent 在主界面分别配置厂商、Key 和模型，自动读取模型目录并统一保存；支持中英文切换、创建研发目标、独立人工审批和原生执行。补齐执行中断恢复、目录隔离和缺失证据处理。整体 P0 仍为 PARTIAL_PASS，详见 [结果与边界](docs/MULTIAGENT_WORKFLOW_P0.md)。接入包仅包含功能代码、已构建界面和通用说明。
 
 > **网页应用**：CLI 现已封装为 Hermes Dashboard 的「工作流」页，默认只读，支持任务依赖、验收证据与人工受控操作。参见 [应用启动与安装说明](docs/WORKFLOW_APP.md)。原有 P0 限制仍保留。
 
-> **Linux 中文本地版（已有 Hermes v0.22.5）**：[下载接入包](downloads/hermes-workflow-local-readonly-v0225-zh-CN.tar.gz?raw=true) · [校验文件](downloads/hermes-workflow-local-readonly-v0225-zh-CN.tar.gz.sha256) · [安装说明](docs/LOCAL_HERMES_V0225.md) · [按钮与按键说明](docs/WORKFLOW_APP_BUTTONS_ZH.md)。包内含已构建前端，无需本机 npm 构建。**v0.22.5 目前仅适配只读界面，完整工作流写入仍关闭。** [查看中文界面](docs/images/workflow-desktop-zh.png)。
+> **Linux 中文本地版（已有 Hermes v0.22.5）**：[下载接入包](downloads/hermes-workflow-local-v0225-zh-CN.tar.gz?raw=true) · [校验文件](downloads/hermes-workflow-local-v0225-zh-CN.tar.gz.sha256) · [安装说明](docs/LOCAL_HERMES_V0225.md) · [按钮与按键说明](docs/WORKFLOW_APP_BUTTONS_ZH.md)。包内含已构建前端，无需本机 npm 构建。支持创建目标、独立人工审批和原生多 Agent 启动；安装默认只读，显式开放后仍检查执行依赖。[查看中文界面](docs/images/workflow-desktop-zh.png)。
+
+本地语言更新：页眉新增「中文 / English」按钮，默认中文并记住选择；补齐模型设置、配置、密钥、频道、系统、自动化模板及弹窗文案，工作流同步切换。源码补丁和验证范围见 [本地化说明](localization/README.md)。
+
+模型连接：工作流主界面同页配置四个 Agent，各自选择厂商和 Key，一次获取全部模型，再分别选择并统一保存；也可套用同一连接。默认 API 地址与协议自动填入，自定义设置在每行直接展开。模型目录和推理复用 Hermes 原生接口。不同厂商直连使用各自的 Key，聚合服务可用一把 Key 选择多家模型。旧 Packy/DeepSeek 固定路由不再作为本地默认配置。
+
+工作流优化：支持创建目标、独立审批和启动多 Agent；提供执行准备清单、状态同步、进度和下一步指引。63 项旧版回归、10 项新版写入/调度检查、6 项模型配置检查、21 项组件测试通过。实际启动需自行准备 Docker 与四角色凭据；实际费用硬上限尚未实现。操作说明见 [工作流按钮](docs/WORKFLOW_APP_BUTTONS_ZH.md)。
 
 > **P0 改造状态：PARTIAL_PASS；P1/P2 尚未启用。** 新版 `submit-feature.sh deploy.env "目标"` 保留参数形式，默认只建 triage 卡。Builder 原始项目挂载改为只读；写入需经操作员授权，使用独立候选副本。Kanban `done` 不再被视为交付接受。开始使用前阅读 [P0 报告与操作说明](docs/MULTIAGENT_WORKFLOW_P0.md) 和 [持续工作记忆/差距矩阵](docs/MULTIAGENT_WORKFLOW_UPGRADE_MEMORY.md)。下文保留历史部署流程；本次没有执行部署或升级。
 

@@ -149,3 +149,90 @@ Chief、Project Manager、六类 Playbook、动态并行计划、项目记忆自
 未修改上游源码、模型 Provider/API 协议、Kanban 数据库实现或 Gateway；未引入新依赖框架/数据库/队列/服务。未执行 git commit/push/PR、root 系统变更、部署/升级/恢复、生产数据库/机器人/ROS 操作；未运行真实 Worker 或影响其他 Docker 容器。实际 deploy.env 与用户配置保留。
 
 代码差异、权限/接受边界、接口变化、测试状态与文档已核对。P0 剩余阻断明确记录；下一步是针对**可信预算强制接口和真实隔离验证**的兼容性设计，而不是直接开展 P1/P2 或启用自动写入。
+
+## 8. 2026-10-30：执行恢复与隔离边界修复
+
+基线为 `codex/chinese-workflow-app@599f3f4c587188a4c06e934529450e90de2f2e93`。GitHub API 与 Git refs 确认该最新分支存在；查询时唯一 PR 是已合并的 #1，新分支尚未创建 PR。本轮使用独立检出，原本地 main 工作区和配置保留。前文的测试数字属于历史记录。
+
+```text
+Overall Result: PARTIAL_PASS
+Completed Phase: P0 执行恢复与隔离修复（离线验证通过）
+P0 overall: PARTIAL_PASS，完整安全验收仍未通过
+P1 / P2: BLOCKED
+```
+
+### 本轮差距修复矩阵
+
+| 原始问题 | 修复与复用 | 本轮证据 | 剩余风险 |
+|---|---|---|---|
+| start 部分放行后中断，已有 Researcher 运行时无法重试 | 已有授权仅补放行剩余 triage 卡，不重写运行中 Profile；复用原生幂等转换 | 部分启动中断/实时运行状态测试 | 不改变原生 Dispatcher |
+| 审查已准备后仍可 start 重写权限 | 拒绝重新打开该轮，须使用受控 repair | CLI 与已认证 HTTP action 拒绝测试 | 真实物理容器隔离 NOT_TESTED |
+| prepare-review 放行 Reviewer 后中断无法重试 | 核对已记录的版本/内容，只补放行 Gate，不替换已发布副本 | 中断释放、同快照重试、改动后拒绝测试 | 逻辑快照不是 OS 层不可变文件系统 |
+| 候选在复制期间变化仍放行 | 复制前后核对 candidate/review 的 HEAD 与文件内容；变化时保持 triage | 复制竞态故障注入 | 后续变化由原有接受校验拒绝 |
+| repair 新轮保存后中断，旧授权仍为 true | 保存新轮前撤销授权；重试复用既有 failure、轮次和原生卡片 | 整轮/部分建卡中断、重复 repair、第二轮成功 ACCEPTED；Researcher 仅一次 run | 全入口、在途总预算仍未实现 |
+| RW output 可嵌套覆盖 RO candidate；candidate 可位于共享 Kanban | 拒绝双向重叠；项目/输出不能暴露 operator 记录目录 | 挂载策略及 operator 路径回归 | Docker 参数测试不冒充物理挂载验证 |
+| 缺日志/缺卡导致 status 抛异常 | 缺日志为 NOT_ACCEPTED；缺卡显示 missing；HTTP 详情正常返回失效状态 | CLI/HTTP 缺日志与原生缺卡测试 | 损坏 DB 不自动重建 |
+| 新目录检查可能破坏最小只读配置 | 只读模式仍只需 PROJECT_DIR、BOARD_SLUG，不强制 OUTPUT_DIR | 最小配置测试及两版原生只读检查 | v0.22.5 写入未开放 |
+
+`REUSED_EXISTING_IMPLEMENTATION`：Kanban 依赖、triage 转换、幂等 ID、运行历史、Dispatcher、恢复与 Profile clone。未新增数据库、队列、常驻进程或公共 CLI。
+
+### 修改文件清单
+
+| 文件 | 原有功能 | 本次修改与必要性 | 兼容性 |
+|---|---|---|---|
+| `scripts/configure_profiles.py` | Worker 挂载生成 | 补 candidate/output/Kanban 重叠检查，封闭实际 RW/RO 越界路径 | 合法分离目录、Provider、配置字段不变 |
+| `scripts/workflow_control.py` | 四阶段控制与验收 | 授权生命周期、中断恢复、快照核对、缺证据状态 | 现有命令/参数及 manifest 结构保留 |
+| `tests/test_workflow.py` | 原生 DB 与替身集成 | 新增 14 项恢复、授权、快照、隔离与缺记录回归 | 临时 clone/DB，Worker/Docker 替身 |
+| `tests/test_workflow_app.py` | 已认证插件 API | 新增 2 项 HTTP 授权/缺日志回归 | 路由、接口字段、前端资产不变 |
+| `README.md` | 项目入口 | 标明源码状态与旧下载包边界 | 历史手册及包保留 |
+| 本报告、唯一工作记忆、`P0_TEST_RESULTS.txt` | 交付与证据 | 追加本轮结果和阻断 | 不另建工作记忆，保留历史 |
+
+### 测试报告
+
+使用工作区内独立 Python 环境和固定官方源码，未借用实际安装运行旧版测试。以下命令在仓库根目录执行；变量由操作员指向隔离测试目录：
+
+```bash
+PYTHONPATH="$HERMES_SOURCE" HERMES_HOME="$TEST_HOME" \
+HERMES_BASELINE_ARCHIVE="$BASELINE_ARCHIVE" \
+"$TEST_PYTHON" -m unittest discover -s tests -v
+
+# 分别指定 aaf5691 与 bf0203a 源码；脚本自行创建临时 home/DB。
+PYTHONPATH="$HERMES_SOURCE" "$TEST_PYTHON" tests/check_workflow_readonly.py
+```
+
+| 检查 | 实际结果 |
+|---|---|
+| 完整 unittest：47 项原有 + 16 项新增 | **PASS：63 tests / 15.189s / OK**，无跳过 |
+| v0.18.2 归档 SHA-256 与逐文件来源验证 | PASS：aaf5691261f12601db845386d650dce1cdfa30f9，verified-archive |
+| 已审计 v0.22.5 归档 SHA-256 | PASS：bf0203a794a07aac3ff764972ab9087baa4e4f4e；0dc2cca54657d162845a77f634e107c61c3fb0bd6c8505212aa2e200591b7cc9 |
+| 两版原生插件/路由/认证/四阶段/证据/只读拒绝 | PASS，default in-process 模式；不代表写入兼容 |
+| 12 个 Shell bash -n、ShellCheck error 级别、12 个 Python AST、工作流 JS 语法、git diff --check | PASS |
+| 本轮浏览器/前端重建 | NOT_TESTED：前端未改，HTTP 控制层已回归；不将历史截图当本轮证据 |
+| 真实 Docker、模型、Gateway 服务恢复、部署/升级/回滚 | NOT_TESTED：当前环境无 Docker 命令，未操作实际安装或服务 |
+
+测试环境首次因 venv/依赖不齐未能运行；改用工作区内 uv 环境补齐后通过。未修改系统 Python 或安装 root 包。测试依赖有 Starlette/httpx 弃用提示；新版原生检查对测试 SQLite 3.45.1 显示 WAL 风险并选择 DELETE journal，没有关闭该保护。
+
+### 使用说明与下一阶段
+
+命令仍见第 5 节。start、prepare-review 或 repair 中断后可以重试原命令；仅恢复相同执行/快照，不重复消费整改轮次或创建卡片。已准备审查的轮次不能重新 start；Reviewer FAIL 后使用既有 repair。源码安装器会复制本轮更新的控制模块；downloads 包仍是此前的中文只读版本，本轮未重新打包。
+
+进一步核对已审计 v0.22.5 源码后，P0 阻断仍有具体依据：
+
+- `hermes_cli/kanban_db_connect.py:788` 才提供 connect_closing，不能仅放宽版本号校验启用旧适配器写入。
+- `kanban_pr_acceptance_store.py:prepare_acceptance` 对 local-only 返回 None；PR completion contract 不能直接替代本地候选验收。
+- `plugins.py` 的 API/辅助调用 hooks 是 observer；`plugins_dispatch.py:60` 仅将 pre_tool_call timeout 作为 fail-closed。不能用可跳过的观察回调宣称已实现所有重试/辅助请求的硬费用上限。
+
+这是源码事实；由此推断，单纯升级或添加 observer 不足以解除 P0。跨 Worker 总预算强制接口仍 NOT_VERIFIED。下一步需明确该接口与在途截止语义，制定版本迁移/回滚方案，再进行双版本写入及专用 Docker/Gateway 故障验证。保持旧 pin 和实际安装不变；P1/P2 没有可使用的新命令。本轮未 commit、push、创建/合并 PR 或执行部署。
+
+
+## 9. 2026-10-30：经人工受控的 v0.22.5 写入接入
+
+用户进一步明确要求创建研发目标、人工审批、启动多 Agent，更新了旧版只读交付范围。本轮工作流写入仅新增已审计 bf0203a 的精确来源门禁，旧部署/升级脚本继续锁定 v0.18.2；不是修改版本字符串或跳过源码校验。第 8 节的“新版写入未开放/未重新打包”属于当时记录，当前状态以本节和 LOCAL_HERMES_V0225.md 为准。
+
+创建使用原生四张 triage 卡；审批独立保存版本/轮次授权，不释放卡片；启动再检查 Docker、角色和运行配置，调用原生 Gateway/dispatcher。UI 确认绑定所见目标和轮次，过期确认拒绝。Profile 选择器不能更换服务端绑定的 home/board。没有新增数据库、调度循环、Provider 或公共 CLI 参数。
+
+原生 Dashboard 可在独立数据根中显式启用人工操作，并绑定已提交项目的干净副本。缺 Docker/角色凭据时能创建和审批，启动被拒绝；相关接口测试使用独立数据库和合成目标。
+
+91 项检查通过：63 项旧版回归、10 项新版原生 DB/Profile/HTTP/派发测试、18 项组件测试；新版默认只读检查仍通过。真实浏览器检查目标创建、审批范围/未勾选禁用、启动依赖、双语和 1280px/390px 布局。派发测试的 Gateway/推理进程使用替身，不是实际模型运行。
+
+Overall Result 仍 PARTIAL_PASS，P1/P2 未启用。实际模型/容器隔离、Gateway 服务恢复、费用/调用次数硬上限与在途总截止仍未完成。新的手动执行入口不改变这些结论。接入包已更新，安装仍默认只读；详见 WORKFLOW_APP_TEST_RESULTS.txt 与 LOCAL_HERMES_V0225.md。

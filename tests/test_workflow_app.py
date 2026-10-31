@@ -84,7 +84,7 @@ class ApplicationTest(unittest.TestCase):
     def test_default_mode_rejects_all_mutations_server_side(self):
         self.assertFalse(self.client.get(self.url + "/meta").json()["actions_enabled"])
         self.assertEqual(self.client.post(self.url + "/executions", json={"objective":"blocked"}).status_code,403)
-        for action in ("start","prepare-review","verify-builder","verify-reviewer","accept","repair"):
+        for action in ("approve","launch","start","prepare-review","verify-builder","verify-reviewer","accept","repair"):
             response=self.client.post(f"{self.url}/executions/{self.fixture.execution}/actions/{action}",json={"confirmed":True},headers={"X-Hermes-Workflow-Action":"1"})
             self.assertEqual(response.status_code,403,action)
 
@@ -154,6 +154,25 @@ class ApplicationTest(unittest.TestCase):
             self.assertFalse(database.exists())
         finally:
             saved.rename(database)
+
+    def test_missing_verification_log_revokes_acceptance_without_a_server_error(self):
+        f = self.fixture
+        f.finish()
+        f.workflow.accept(f.execution)
+        (f.workflow.path(f.execution)/"round-0"/"reviewer-verification.log").unlink()
+        details = self.client.get(f"{self.url}/executions/{f.execution}")
+        self.assertEqual(details.status_code,200,details.text)
+        self.assertEqual(details.json()["acceptance"]["status"],"NOT_ACCEPTED")
+        self.assertEqual(self.client.get(f"{self.url}/executions/{f.execution}/evidence/0/reviewer").status_code,409)
+
+    def test_legacy_start_cannot_bypass_execution_prerequisites(self):
+        self.fixture.build()
+        self.enable_actions()
+        with patch.object(self.api.core_module(),"verify_source",return_value={}):
+            response = self.client.post(f"{self.url}/executions/{self.fixture.execution}/actions/start",
+                json={"confirmed":True},headers={"X-Hermes-Workflow-Action":"1"})
+        self.assertEqual(response.status_code,409,response.text)
+        self.assertIn("EXECUTION_NOT_READY",response.json()["detail"])
 
     def test_application_is_bound_to_operator_selected_project(self):
         foreign=json.loads(json.dumps(self.fixture.manifest))

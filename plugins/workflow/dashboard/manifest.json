@@ -3,7 +3,7 @@
   "label": "工作流",
   "description": "目标、任务依赖、验收证据与人工受控操作",
   "icon": "GitBranch",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "tab": {"path": "/workflow", "position": "after:kanban"},
   "entry": "app.js",
   "css": "app.css",

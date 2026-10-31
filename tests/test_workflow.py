@@ -234,6 +234,144 @@ class WorkflowTest(unittest.TestCase):
         with kb.connect_closing(board="default") as conn:
             self.assertIn(repaired["rounds"][0]["tasks"]["reviewer"],kb.parent_ids(conn,repaired["rounds"][1]["tasks"]["builder"]))
 
+    def test_interrupted_repair_revokes_previous_round_authorization(self):
+        self.finish(verdict="FAIL")
+        with patch.object(self.workflow,"populate_round",side_effect=RuntimeError("interrupted repair")):
+            with self.assertRaisesRegex(RuntimeError,"interrupted repair"):
+                self.workflow.repair(self.execution,"implementation","fix review findings")
+        interrupted = self.workflow.load(self.execution)
+        self.assertFalse(interrupted["approved_write"])
+        recovered = self.workflow.repair(self.execution,"implementation","fix review findings")
+        self.assertEqual(len(recovered["rounds"]),2)
+        self.assertEqual(len(recovered["failures"]),1)
+        self.assertEqual(set(recovered["rounds"][-1]["tasks"]),set(wc.ROLES))
+        self.assertFalse(recovered["approved_write"])
+        self.assertEqual(recovered,self.workflow.repair(self.execution,"implementation","fix review findings"))
+
+    def test_repair_resumes_after_native_card_creation_without_duplicates(self):
+        self.finish(verdict="FAIL")
+        original = kb.create_task
+        def interrupted(conn, **kwargs):
+            if kwargs["title"].startswith("reviewer:"):
+                raise RuntimeError("interrupted card creation")
+            return original(conn,**kwargs)
+        with patch.object(kb,"create_task",side_effect=interrupted):
+            with self.assertRaisesRegex(RuntimeError,"interrupted card creation"):
+                self.workflow.repair(self.execution,"test","fix review findings")
+        builder = self.row()["tasks"]["builder"]
+        resumed = self.workflow.repair(self.execution,"test","fix review findings")
+        self.assertEqual(resumed["rounds"][-1]["tasks"]["builder"],builder)
+        with kb.connect_closing(board="default") as conn:
+            self.assertEqual(len(kb.list_tasks(conn)),7)
+        self.assertFalse(resumed["approved_write"])
+        with self.assertRaisesRegex(wc.Rejected,"HUMAN_REQUIRED"):
+            self.workflow.repair(self.execution,"permission","requires operator access")
+
+    def test_repaired_candidate_can_pass_without_rerunning_research(self):
+        self.finish(verdict="FAIL")
+        research = self.row()["tasks"]["researcher"]
+        self.workflow.repair(self.execution,"implementation","fix review findings")
+        self.workflow.start(self.execution,True)
+        with (Path(self.row()["candidate"])/"LICENSE").open("a",encoding="utf-8") as out:
+            out.write("Second round fixture repair.\n")
+        self.completed("builder",self.metadata())
+        self.workflow.prepare_review(self.execution)
+        self.completed("reviewer",dict(self.metadata(),verdict="PASS",findings=[]))
+        self.completed("orchestrator")
+        for role in ("builder","reviewer"):
+            self.workflow.verify(self.execution,role,self.passing_runner)
+        self.assertEqual(self.workflow.accept(self.execution)["status"],"ACCEPTED")
+        with kb.connect_closing(board="default") as conn:
+            self.assertEqual(len(kb.list_runs(conn,research)),1)
+
+    def test_start_retry_resumes_release_without_rewriting_live_profile(self):
+        original = kb.specify_triage_task
+        def interrupted(conn, task, **kwargs):
+            if task == self.row()["tasks"]["builder"]:
+                raise RuntimeError("interrupted start")
+            return original(conn,task,**kwargs)
+        with patch.object(kb,"specify_triage_task",side_effect=interrupted):
+            with self.assertRaisesRegex(RuntimeError,"interrupted start"):
+                self.workflow.start(self.execution,True)
+        with kb.connect_closing(board="default") as conn:
+            self.assertIsNotNone(kb.claim_task(conn,self.row()["tasks"]["researcher"]))
+        with patch.object(self.workflow,"scoped_profile",side_effect=AssertionError("rewrote live permissions")):
+            resumed = self.workflow.start(self.execution,True)
+        self.assertTrue(resumed["approved_write"])
+        with kb.connect_closing(board="default") as conn:
+            self.assertEqual(kb.get_task(conn,self.row()["tasks"]["builder"]).status,"todo")
+
+    def test_start_cannot_reopen_a_prepared_review(self):
+        self.build()
+        with self.assertRaisesRegex(wc.Rejected,"review already prepared"):
+            self.workflow.start(self.execution,True)
+
+    def test_prepare_review_retry_releases_gate_without_replacing_snapshot(self):
+        self.workflow.start(self.execution,True)
+        self.completed("researcher")
+        (Path(self.row()["candidate"])/"LICENSE").write_text("candidate change",encoding="utf-8")
+        self.completed("builder",self.metadata())
+        original = kb.specify_triage_task
+        def interrupted(conn, task, **kwargs):
+            if task == self.row()["tasks"]["orchestrator"]:
+                raise RuntimeError("interrupted release")
+            return original(conn,task,**kwargs)
+        with patch.object(kb,"specify_triage_task",side_effect=interrupted):
+            with self.assertRaisesRegex(RuntimeError,"interrupted release"):
+                self.workflow.prepare_review(self.execution)
+        frozen = self.row()["candidate_digest"]
+        with patch.object(wc.shutil,"rmtree",side_effect=AssertionError("replaced released review")):
+            recovered = self.workflow.prepare_review(self.execution)
+        self.assertEqual(recovered["rounds"][-1]["candidate_digest"],frozen)
+        with kb.connect_closing(board="default") as conn:
+            self.assertEqual(kb.get_task(conn,self.row()["tasks"]["orchestrator"]).status,"todo")
+
+    def test_prepare_review_retry_rejects_changed_snapshot(self):
+        self.build()
+        (Path(self.row()["review"])/"LICENSE").write_text("changed snapshot",encoding="utf-8")
+        with self.assertRaisesRegex(wc.Rejected,"snapshot changed"):
+            self.workflow.prepare_review(self.execution)
+
+    def test_prepare_review_does_not_release_a_racing_candidate(self):
+        self.workflow.start(self.execution,True)
+        self.completed("researcher")
+        self.completed("builder",self.metadata())
+        original = wc.shutil.copytree
+        def racing_copy(source, destination, *args, **kwargs):
+            result = original(source,destination,*args,**kwargs)
+            if Path(source) == Path(self.row()["candidate"]):
+                (Path(source)/"LICENSE").write_text("candidate changed during copy",encoding="utf-8")
+            return result
+        with patch.object(wc.shutil,"copytree",side_effect=racing_copy):
+            with self.assertRaisesRegex(wc.Rejected,"snapshot"):
+                self.workflow.prepare_review(self.execution)
+        with kb.connect_closing(board="default") as conn:
+            self.assertEqual(kb.get_task(conn,self.row()["tasks"]["reviewer"]).status,"triage")
+
+    def test_missing_verification_log_is_not_accepted(self):
+        self.finish()
+        (self.workflow.path(self.execution)/"round-0"/"reviewer-verification.log").unlink()
+        self.assertEqual(self.workflow.status(self.execution)["acceptance"]["status"],"NOT_ACCEPTED")
+
+    def test_missing_native_task_is_reported_in_status(self):
+        with kb.connect_closing(board="default") as conn:
+            conn.execute("DELETE FROM tasks WHERE id=?",(self.row()["tasks"]["orchestrator"],))
+            conn.commit()
+        state = self.workflow.status(self.execution)
+        self.assertEqual(state["rounds"][0]["tasks"]["orchestrator"]["status"],"missing")
+        self.assertEqual(state["acceptance"]["status"],"NOT_ACCEPTED")
+
+    def test_operator_records_cannot_be_exposed_by_project_or_output(self):
+        for key, value in (("OUTPUT_DIR",self.root),("PROJECT_DIR",self.root)):
+            with self.subTest(key=key),self.assertRaisesRegex(wc.Rejected,"operator records"):
+                wc.Workflow(self.root,{**self.env,key:str(value)})
+
+    def test_readonly_status_does_not_require_an_output_configuration(self):
+        env = dict(self.env)
+        env.pop("OUTPUT_DIR")
+        readonly = wc.Workflow(self.root,env)
+        self.assertEqual(readonly.status(self.execution)["acceptance"]["status"],"NOT_ACCEPTED")
+
     def test_irrecoverable_categories_require_human(self):
         self.finish(verdict="FAIL")
         for kind in ("environment","api_model","permission","requirements"):
@@ -492,6 +630,23 @@ class MountPolicyTest(unittest.TestCase):
                 configs.worker_mounts("builder",root/"project",root/"kanban",root/"out",workspace)
             with self.assertRaisesRegex(ValueError,"writable"):
                 configs.worker_mounts("builder",root/"project",root/"kanban",root/"project"/"outputs")
+
+    def test_writable_output_cannot_overlap_candidate_in_either_direction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root/"candidate"
+            (candidate/".git").mkdir(parents=True)
+            for output in (candidate,candidate/"out",root):
+                with self.subTest(output=output),self.assertRaisesRegex(ValueError,"writable"):
+                    configs.worker_mounts("reviewer",root/"project",root/"kanban",output,candidate)
+
+    def test_candidate_cannot_be_inside_shared_kanban_storage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root/"kanban"/"candidate"
+            (candidate/".git").mkdir(parents=True)
+            with self.assertRaisesRegex(ValueError,"Kanban"):
+                configs.worker_mounts("builder",root/"project",root/"kanban",root/"out",candidate)
 
 
 if __name__ == "__main__":
