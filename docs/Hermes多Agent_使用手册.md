@@ -1,5 +1,7 @@
 # Hermes 多 Agent 使用手册
 
+> **P0 行为变更**：本文件后文保留旧版实例说明。新版标准提交入口默认生成 triage 卡，须操作员授权后才派发；普通 `done` / Agent PASS 不等于 `ACCEPTED`。Builder 使用独立候选 clone，Reviewer 审查相同内容的只读副本。不要直接按旧实例说明在原始项目上执行写任务。请先阅读 [P0 操作说明](MULTIAGENT_WORKFLOW_P0.md)。Chief/Project Manager/Playbook/长期自治尚未实现或启用。
+
 > 版本：v1.0
 >
 > 本文说明已部署 Hermes 多 Agent 系统的日常使用、任务编排、运维检查与安全边界。首次安装请先阅读仓库根目录的[一键部署手册](../README.md)。

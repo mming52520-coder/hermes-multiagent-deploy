@@ -1,0 +1,77 @@
+Hermes local read-only compatibility validation, 2026-10-29
+Official v0.22.5 source: bf0203a794a07aac3ff764972ab9087baa4e4f4e
+Write/worker/model compatibility is NOT_VERIFIED. No production deployment.
+
+v0.18.2 full regression (final)
+test_source_without_provenance_is_rejected (test_workflow.BaselineTest.test_source_without_provenance_is_rejected) ... ok
+test_wrong_commit_and_unverified_archives_are_rejected (test_workflow.BaselineTest.test_wrong_commit_and_unverified_archives_are_rejected) ... ok
+test_original_and_shared_storage_readonly_and_exact_candidate (test_workflow.MountPolicyTest.test_original_and_shared_storage_readonly_and_exact_candidate) ... ok
+test_rejects_shared_git_metadata_and_overlapping_writable_paths (test_workflow.MountPolicyTest.test_rejects_shared_git_metadata_and_overlapping_writable_paths) ... ok
+test_accepted_history_does_not_expire_as_if_new_work_were_running (test_workflow.WorkflowTest.test_accepted_history_does_not_expire_as_if_new_work_were_running) ... ok
+test_altered_log_rejected (test_workflow.WorkflowTest.test_altered_log_rejected) ... ok
+test_builder_failure_never_releases_review (test_workflow.WorkflowTest.test_builder_failure_never_releases_review) ... ok
+test_candidate_mutation_revokes_acceptance (test_workflow.WorkflowTest.test_candidate_mutation_revokes_acceptance) ... ok
+test_configuration_refresh_preserves_custom_soul_and_provider_routes (test_workflow.WorkflowTest.test_configuration_refresh_preserves_custom_soul_and_provider_routes) ... ok
+test_controlled_repair_reuses_research_and_starts_unapproved (test_workflow.WorkflowTest.test_controlled_repair_reuses_research_and_starts_unapproved) ... ok
+test_default_off_and_no_approval_cannot_write (test_workflow.WorkflowTest.test_default_off_and_no_approval_cannot_write) ... ok
+test_existing_shell_invocation_uses_native_interpreter_and_job_key (test_workflow.WorkflowTest.test_existing_shell_invocation_uses_native_interpreter_and_job_key) ... ok
+test_failed_test_is_not_accepted (test_workflow.WorkflowTest.test_failed_test_is_not_accepted) ... ok
+test_global_time_run_and_unknown_cost_limits (test_workflow.WorkflowTest.test_global_time_run_and_unknown_cost_limits) ... ok
+test_idempotent_completed_execution_and_instances (test_workflow.WorkflowTest.test_idempotent_completed_execution_and_instances) ... ok
+test_irrecoverable_categories_require_human (test_workflow.WorkflowTest.test_irrecoverable_categories_require_human) ... ok
+test_missing_actual_changes_rejected (test_workflow.WorkflowTest.test_missing_actual_changes_rejected) ... ok
+test_missing_test_handoff_rejected (test_workflow.WorkflowTest.test_missing_test_handoff_rejected) ... ok
+test_native_crashed_worker_trips_existing_failure_limit (test_workflow.WorkflowTest.test_native_crashed_worker_trips_existing_failure_limit) ... ok
+test_native_dispatch_claim_recovery_and_duplicate_dispatch (test_workflow.WorkflowTest.test_native_dispatch_claim_recovery_and_duplicate_dispatch) ... ok
+test_native_docker_arguments_keep_mount_permissions (test_workflow.WorkflowTest.test_native_docker_arguments_keep_mount_permissions) ... ok
+test_native_done_cannot_forge_acceptance (test_workflow.WorkflowTest.test_native_done_cannot_forge_acceptance) ... ok
+test_native_timeout_and_worker_crash_do_not_auto_accept (test_workflow.WorkflowTest.test_native_timeout_and_worker_crash_do_not_auto_accept) ... ok
+test_partial_submission_recovers_without_duplicate_native_cards (test_workflow.WorkflowTest.test_partial_submission_recovers_without_duplicate_native_cards) ... ok
+test_pass_requires_explicit_gate_and_current_receipts (test_workflow.WorkflowTest.test_pass_requires_explicit_gate_and_current_receipts) ... ok
+test_repair_round_limit (test_workflow.WorkflowTest.test_repair_round_limit) ... ok
+test_repeated_failure_requires_human (test_workflow.WorkflowTest.test_repeated_failure_requires_human) ... ok
+test_reviewer_fail_is_not_accepted (test_workflow.WorkflowTest.test_reviewer_fail_is_not_accepted) ... ok
+test_scoped_profile_cwd_reaches_exact_mount_through_native_config (test_workflow.WorkflowTest.test_scoped_profile_cwd_reaches_exact_mount_through_native_config) ... ok
+test_status_does_not_recreate_missing_native_database (test_workflow.WorkflowTest.test_status_does_not_recreate_missing_native_database) ... ok
+test_verification_container_has_only_readonly_candidate (test_workflow.WorkflowTest.test_verification_container_has_only_readonly_candidate) ... ok
+test_verification_timeout_is_failure_and_cleans_only_own_container (test_workflow.WorkflowTest.test_verification_timeout_is_failure_and_cleans_only_own_container) ... ok
+test_wrong_commit_rejected (test_workflow.WorkflowTest.test_wrong_commit_rejected) ... ok
+test_application_is_bound_to_operator_selected_project (test_workflow_app.ApplicationTest.test_application_is_bound_to_operator_selected_project) ... ok
+test_browse_lists_native_states_without_exposing_environment (test_workflow_app.ApplicationTest.test_browse_lists_native_states_without_exposing_environment) ... ok
+test_confirmed_submit_uses_existing_native_four_stage_plan (test_workflow_app.ApplicationTest.test_confirmed_submit_uses_existing_native_four_stage_plan) ... ok
+test_cookie_auth_also_uses_canonical_gate (test_workflow_app.ApplicationTest.test_cookie_auth_also_uses_canonical_gate) ... ok
+test_default_mode_rejects_all_mutations_server_side (test_workflow_app.ApplicationTest.test_default_mode_rejects_all_mutations_server_side) ... ok
+test_evidence_matches_real_operator_record_and_bounds_log_tail (test_workflow_app.ApplicationTest.test_evidence_matches_real_operator_record_and_bounds_log_tail) ... ok
+test_gate_failure_is_preserved_as_http_conflict (test_workflow_app.ApplicationTest.test_gate_failure_is_preserved_as_http_conflict) ... ok
+test_missing_confirmation_and_cross_origin_requests_rejected (test_workflow_app.ApplicationTest.test_missing_confirmation_and_cross_origin_requests_rejected) ... ok
+test_missing_native_database_does_not_create_an_empty_replacement (test_workflow_app.ApplicationTest.test_missing_native_database_does_not_create_an_empty_replacement) ... ok
+test_native_dashboard_discovers_and_mounts_application (test_workflow_app.ApplicationTest.test_native_dashboard_discovers_and_mounts_application) ... ok
+test_reinstall_preserves_local_settings_and_rejects_edited_assets (test_workflow_app.ApplicationTest.test_reinstall_preserves_local_settings_and_rejects_edited_assets) ... ok
+test_requests_cannot_supply_shell_commands_or_environment_paths (test_workflow_app.ApplicationTest.test_requests_cannot_supply_shell_commands_or_environment_paths) ... ok
+test_requires_actual_dashboard_session (test_workflow_app.ApplicationTest.test_requires_actual_dashboard_session) ... ok
+test_unknown_execution_and_unsupported_evidence_cannot_read_files (test_workflow_app.ApplicationTest.test_unknown_execution_and_unsupported_evidence_cannot_read_files) ... ok
+
+----------------------------------------------------------------------
+Ran 47 tests in 20.604s
+
+OK
+
+v0.18.2 native read-only check (final)
+PASS: native discovery and API mount; auth; metadata; four triage stages; details; missing evidence; mutation denied; no extra task
+Scope: default in-process plugin host, read-only API only. No frontend, worker or write compatibility claim.
+
+v0.22.5 native read-only check and fixture (final)
+Preparing the isolated Hermes runtime…
+  → Installing Python dependencies…
+  ✓ Installing Python dependencies
+  → Installing Python dependencies…
+  ✓ Installing Python dependencies
+
+v0.22.5 native frontend build
+  → Preparing Node dependencies…
+  ✓ Preparing Node dependencies
+  → Building the web UI…
+  ✓ Building the web UI
+
+v0.22.5 real Chromium (final)
+PASS: native Dashboard frontend and SDK; authenticated plugin; four stages; read-only control; evidence; mobile layout; no page errors

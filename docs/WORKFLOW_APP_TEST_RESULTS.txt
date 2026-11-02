@@ -1,0 +1,173 @@
+test_application_is_bound_to_operator_selected_project (test_workflow_app.ApplicationTest.test_application_is_bound_to_operator_selected_project) ... ok
+test_browse_lists_native_states_without_exposing_environment (test_workflow_app.ApplicationTest.test_browse_lists_native_states_without_exposing_environment) ... ok
+test_confirmed_submit_uses_existing_native_four_stage_plan (test_workflow_app.ApplicationTest.test_confirmed_submit_uses_existing_native_four_stage_plan) ... ok
+test_cookie_auth_also_uses_canonical_gate (test_workflow_app.ApplicationTest.test_cookie_auth_also_uses_canonical_gate) ... ok
+test_default_mode_rejects_all_mutations_server_side (test_workflow_app.ApplicationTest.test_default_mode_rejects_all_mutations_server_side) ... ok
+test_evidence_matches_real_operator_record_and_bounds_log_tail (test_workflow_app.ApplicationTest.test_evidence_matches_real_operator_record_and_bounds_log_tail) ... ok
+test_gate_failure_is_preserved_as_http_conflict (test_workflow_app.ApplicationTest.test_gate_failure_is_preserved_as_http_conflict) ... ok
+test_missing_confirmation_and_cross_origin_requests_rejected (test_workflow_app.ApplicationTest.test_missing_confirmation_and_cross_origin_requests_rejected) ... ok
+test_missing_native_database_does_not_create_an_empty_replacement (test_workflow_app.ApplicationTest.test_missing_native_database_does_not_create_an_empty_replacement) ... ok
+test_native_dashboard_discovers_and_mounts_application (test_workflow_app.ApplicationTest.test_native_dashboard_discovers_and_mounts_application) ... ok
+test_reinstall_preserves_local_settings_and_rejects_edited_assets (test_workflow_app.ApplicationTest.test_reinstall_preserves_local_settings_and_rejects_edited_assets) ... ok
+test_requests_cannot_supply_shell_commands_or_environment_paths (test_workflow_app.ApplicationTest.test_requests_cannot_supply_shell_commands_or_environment_paths) ... ok
+test_requires_actual_dashboard_session (test_workflow_app.ApplicationTest.test_requires_actual_dashboard_session) ... ok
+test_unknown_execution_and_unsupported_evidence_cannot_read_files (test_workflow_app.ApplicationTest.test_unknown_execution_and_unsupported_evidence_cannot_read_files) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 4.586s
+
+OK
+
+
+2026-10-30: Native v0.22.5 create / approve / launch
+===================================================
+Legacy full regression: 63 tests / 24.914s / OK.
+Modern native contracts: 10 tests / 37.754s / OK, Python 3.14.9.
+Frontend components: 18 tests / 2.002s / OK.
+Modern native read-only discovery, auth, API, mutation denial: PASS.
+Critical Python checks (ruff E9,F63,F7,F82), JS syntax: PASS.
+
+Native source pin: bf0203a794a07aac3ff764972ab9087baa4e4f4e (v0.22.5).
+Deployment scripts retain the original aaf5691 v0.18.2 pin.
+Source/archive verification remains mandatory for every write; no version-string bypass.
+Native APIs: kanban_db_connect, gateway_runtime.ensure_gateway_runtime, kanban_db_dispatch.dispatch_once.
+No alternate task DB, scheduler, daemon, or provider was introduced.
+
+Coverage: native four-card triage creation and idempotence; round-bound human approval
+without release; unauthorized launch and missing prerequisites leave triage unchanged;
+real atomic dispatcher claims with short-lived offline worker doubles; repeated launch
+does not duplicate claims; stale round confirmation rejected; authenticated HTTP create,
+approve and blocked launch; same-origin/confirmation/payload restrictions; profile picker
+cannot change the bound workflow home; original deployment provenance unchanged.
+
+Actual native Dashboard browser: goal creation, four triage stages, explicit approval
+modal with objective/source/round and disabled unconfirmed submit, launch disabled for
+missing Docker/role credentials, bilingual prerequisites, responsive 1280px/390px layouts.
+No horizontal overflow. Browser error log empty. Dialog canceled; goal remains unapproved.
+
+Configuration checks use temporary homes and synthetic credentials.
+P0 PARTIAL_PASS: hard actual cost/call caps and in-flight execution-wide hard stop remain incomplete.
+Gateway startup is doubled only in tests; service recovery and real isolation NOT_VERIFIED.
+
+Release: 86 files / 85 content hashes / 10 managed installer hashes verified; default read-only install PASS.
+SHA-256: b76b8b39e410928508c70e55367e9e1414499b97f2ec6346b181801a1b681979
+Final native DB audit: 1 synthetic review goal, approved_write=false, 4 triage tasks, 0 native runs.
+
+
+2026-10-30: Per-role provider/model/API onboarding (plugin v0.3.0)
+----------------------------------------------------------------
+63 legacy regression checks: PASS / 17.114s.
+20 frontend component checks: PASS / 1.374s.
+3 native model configuration + authenticated HTTP checks: PASS / 4.286s.
+1 first-connection native Profile creation check: PASS / 1.563s.
+Covers shared-key setup, independent provider/model/endpoint overrides, private key
+storage, preserving other role settings, blank-key reuse, synchronizing pending
+profiles and revoking old approval, refusal to mutate an already released target.
+Browser: 4 cards, native provider choices, Anthropic selection, custom protocols,
+password field, 390px form without horizontal overflow. Real keys not entered.
+Sources: Hermes provider_catalog/ProviderProfile/model catalogs; no added SDK/gateway.
+Real inference is outside these isolated configuration checks; operator environments
+require Docker and user-provided credentials.
+
+Native picker inline API/Key setup (2026-10-30):
+44 related Vitest checks PASS / 2.11s; 1 additional native custom-row check PASS / 1.86s.
+Strict TypeScript and Vite builds PASS. Targeted ESLint: 0 errors, 1 existing ChatSidebar Fast Refresh warning.
+Live native MoA picker displays key/model/address form and custom protocols; no live keys or inference used.
+Final local archive generation: 92 files; SHA-256 c32e2ab87cd54546786e61d12b0686ee8311dbc292d86184effad588e1475aba.
+
+Official API defaults + key-only import (2026-10-30):
+46 related Vitest checks PASS / 2.28s, plus 1 new China GLM check PASS / 2.41s.
+Strict TypeScript/Vite build PASS; targeted ESLint clean; git diff --check PASS.
+Browser: default OpenAI API address and Responses format, key-only form, fixed import button, collapsed advanced settings, and China GLM preset observed. No real key entered or inference dispatched.
+Archive: 93 files; generated SHA-256 411ed03a5583013d4bc7998e4dd60a2d2280402bc5a9ba8f6e50f8a5942ec313.
+
+Unified four-agent model configuration v0.4.0 (2026-10-30):
+21 UI checks PASS / 1.360s. 5 native checks passed in the 6-check run (7.586s); Gemini fixture corrected and only that check rerun: PASS / 1.599s.
+Covers role-scoped credentials, local real HTTP catalog requests, import without model assignment, mixed-provider batch save, pending profile key copying and approval revocation, released-target refusal, Gemini headers/pagination, inline editing and retry.
+Browser: four inline rows, no role dialogs, provider/key/model fields, load-all and save controls. No real provider key entered or inference dispatched.
+JS/Python syntax and git diff --check PASS. Native frontend unchanged; broad regressions not repeated.
+Publication package: builder-local compiler receipt excluded; source pin and content
+manifest retained. The downloads sidecar records the current archive checksum.
+
+Publication verification (2026-10-31):
+63 legacy regression tests: PASS.
+16 native v0.22.5 write/model configuration tests: PASS.
+21 React/jsdom workflow component tests: PASS.
+Total: 100 tests, no skips or failures.
+Release bundle: 92 files, 91 manifest entries verified. Native compiler cache
+receipt excluded because it contains builder-local paths; source commit and
+package content manifest retained. See downloads/*.sha256 for the archive hash.
+Publication excludes local working memory, runtime state, provider credentials,
+project-specific business sources and execution artifacts.
+
+Reproduction (set each variable to the corresponding audited environment):
+PYTHONPATH="$LEGACY_SOURCE" HERMES_HOME="$TEST_HOME" HERMES_BASELINE_ARCHIVE="$LEGACY_ARCHIVE" "$LEGACY_PYTHON" -m unittest discover -s tests
+PYTHONPATH="$NATIVE_SOURCE:$PWD/tests" HERMES_HOME="$TEST_HOME" HERMES_BASELINE_ARCHIVE="$NATIVE_ARCHIVE" "$NATIVE_PYTHON" -m unittest check_workflow_writes_v0225 check_workflow_models
+HERMES_FRONTEND_SOURCE="$FRONTEND_SOURCE" node --test tests/workflow_dashboard.test.cjs
+
+2026-10-31: Simplified overview and native stage outputs (v0.5.0)
+Frontend: 22/23 passed initially; the remaining assertion referenced the removed action panel. Updated to the next-step control contract; that check passed on its own rerun.
+Authenticated legacy HTTP adapter: 17 tests / 5.073s / OK.
+Native v0.22.5 session store: 1 targeted test / 4.235s / OK; completed summaries, successful skill views, deduplication and list/detail output separation.
+No new inference, workflow launch, approval or acceptance action was performed for these UI changes.
+Live local Dashboard: PASS. Refreshed v0.5 UI hides the marked decorations/panels, labels the connection area Model settings, and displays the recorded research summary and No skills were invoked in this run from the native session.
+
+2026-10-31: Customer workbench (frontend v0.6.0)
+Frontend suite: 27 tests / 1.156s / OK. JS syntax and diff whitespace checks passed.
+Covered: compact titles with full request access, final-summary default, collapsed settings with preserved drafts, explicit approval/start, ordered delivery actions, reuse of current PASS receipts, stop on verification failure, optional failure classification, polling and bilingual rendering.
+Live local Dashboard: task list, stage results and minimal creation modal reviewed. Screenshots: outputs/verification/customer-workbench/overview.png and new-task.png.
+Existing backend, credentials and source/approval/acceptance gates were reused. No model inference was needed for this UI review.
+
+2026-11-01: Workflow v2 / customer workbench v0.7.0
+Implemented: versioned legacy compatibility; read-only upstream handoffs; owner-generated
+completion identity; parallel Builder and independent Tester; one frozen platform test
+receipt; independent Reviewer; explicit initial/repair approval and final acceptance;
+native-owner automatic advancement; elapsed execution versus approval-wait timing.
+
+Offline checks (existing prepared runtimes; no dependency installation):
+- Native v2 behavior: 12 checks passed; subsequent targeted repair/readiness/cache
+  checks passed. Added evidence-only review retry check passed (13th case).
+- Native lifecycle hook: 3 checks passed.
+- Model connection behavior: 9 checks passed, including preserved legacy connection,
+  empty legacy model setup and custom endpoint/credential inheritance.
+- Frontend: initial 31-case suite passed; added connection case passed with the
+  5-case v2 subset; final tester-label transition case passed. All 33 current cases
+  have passing records; the complete suite was not repeatedly rerun.
+- Native write behavior: 10 cases passed in the first run; the remaining legacy HTTP
+  fixture was pinned to its historical workflow version and passed on targeted rerun.
+- Native API: 5 targeted cases passed, including first approval advances without
+  accepting, legacy start separation and no repeated readiness checks while browsing.
+- Legacy core: 46 cases passed, then the remaining shell-resume fixture passed after
+  retaining its historical execution version (47 current cases covered).
+- Legacy HTTP: 20 applicable cases passed. The new-v2-submit case requires native
+  v0.22.5 atomic_config_replace and passed in that native runtime separately; attempting
+  it against v0.18.2 is unsupported. System PyYAML was appended to sys.path rather than
+  prepended, retaining the native Pydantic/typing_extensions versions.
+- JS syntax and git diff --check passed.
+
+Real inference + Docker run:
+- Native Researcher, Builder and Tester each completed one real worker run; Reviewer
+  completed two. Existing saved model connections were used without exposing keys.
+- Real requirement: add latest-round progress counts to Workflow.status(), preserve
+  existing status fields and distinguish completed tasks from accepted delivery.
+- Builder and Tester actually ran in parallel after reading the Researcher handoff.
+- Frozen Docker platform run: 53 project tests + 8 independent tests, all passed,
+  exit 0. Complete test execution occurred once.
+- First review returned FAIL solely because the running Gateway cached the pre-update
+  handoff publisher and omitted the executed independent-test snapshot. The FAIL
+  record was retained. Reloaded the updated owner, republished the bound snapshot,
+  reused the passing receipt, and ran only Reviewer again: PASS.
+- The owner stopped at READY_FOR_ACCEPTANCE. Operator recorded final acceptance
+  through the APP under the user's explicit authorization: ACCEPTED.
+- Native logs, original FAIL, subsequent PASS, operator recovery record, acceptance
+  receipt and actual candidate patch are retained under
+  outputs/verification/workflow-v2-real-run/ (local run artifacts, not bundled).
+- Actual API cost is unavailable and is not reported as an estimate or zero.
+
+2026-11-01: Compact workspace task list
+Renamed the page heading to Workspace / 工作台. Task rows show title and status;
+removed timestamps, list count and large card borders. Search and selection remain,
+with the complete title available on hover.
+All 33 existing frontend component tests passed in one run (1.352s).
+JS syntax and git diff --check passed. The actual local Dashboard was visually
+reviewed with all five existing tasks. No model execution was repeated for this change.

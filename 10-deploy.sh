@@ -40,13 +40,9 @@ fi
 
 python3 "$SCRIPT_DIR/scripts/configure_profiles.py" "$ENV_FILE" --validate-only
 
-if [[ "${RUN_PROVIDER_PREFLIGHT:-true}" == "true" ]]; then
-  echo "执行模型 API 预检（每个唯一 provider/model 一个极小请求）..."
-  python3 "$SCRIPT_DIR/scripts/check-model-apis.py" "$ENV_FILE"
-fi
-
 export PATH="$HOME/.local/bin:$HOME/.hermes/bin:$PATH"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+hermes_root="${HERMES_HOME:-$HOME/.hermes}"
 
 resolve_hermes() {
   local c
@@ -63,7 +59,7 @@ resolve_hermes() {
 
 if ! HERMES_BIN="$(resolve_hermes)"; then
   echo "安装 Hermes Agent..."
-  curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+  bash "$SCRIPT_DIR/scripts/install-pinned-hermes.sh"
   hash -r
   HERMES_BIN="$(resolve_hermes)" || {
     echo "错误：安装完成后仍找不到 hermes 命令。" >&2
@@ -71,7 +67,17 @@ if ! HERMES_BIN="$(resolve_hermes)"; then
   }
 fi
 echo "Hermes: $HERMES_BIN"
-"$HERMES_BIN" --version || true
+baseline_args=(--hermes-bin "$HERMES_BIN")
+if [[ -n "${HERMES_BASELINE_ARCHIVE:-}" ]]; then
+  baseline_args+=(--archive "$HERMES_BASELINE_ARCHIVE")
+fi
+python3 "$SCRIPT_DIR/scripts/hermes_baseline.py" "${baseline_args[@]}"
+printf '%s\n' aaf5691261f12601db845386d650dce1cdfa30f9 > "$SCRIPT_DIR/installed-commit.txt"
+
+if [[ "${RUN_PROVIDER_PREFLIGHT:-true}" == "true" ]]; then
+  echo "执行模型 API 预检（每个唯一 provider/model 一个极小请求）..."
+  python3 "$SCRIPT_DIR/scripts/check-model-apis.py" "$ENV_FILE"
+fi
 
 mkdir -p "$PROJECT_DIR" "$OUTPUT_DIR" "$BACKUP_DIR"
 
@@ -87,7 +93,7 @@ fi
 create_profile() {
   local name="$1"
   local description="$2"
-  if [[ ! -d "$HOME/.hermes/profiles/$name" ]]; then
+  if [[ ! -d "$hermes_root/profiles/$name" ]]; then
     "$HERMES_BIN" profile create "$name" --description "$description"
   else
     echo "Profile 已存在，保留并更新配置：$name"
@@ -133,11 +139,8 @@ for profile in orchestrator researcher builder reviewer; do
   "$HERMES_BIN" -p "$profile" doctor || true
 done
 
-# 记录实际安装的 Git commit，便于审计与回滚。
-managed_repo="$HOME/.hermes/hermes-agent"
-if [[ -d "$managed_repo/.git" ]]; then
-  git -C "$managed_repo" rev-parse HEAD > "$SCRIPT_DIR/installed-commit.txt"
-fi
+# installed-commit.txt was written only after the actual CLI source passed the
+# baseline check; do not overwrite it from a different default-home checkout.
 
 if [[ "${RUN_SMOKE_TEST:-true}" == "true" ]]; then
   "$SCRIPT_DIR/scripts/smoke-test.sh" "$ENV_FILE"
