@@ -1,4 +1,4 @@
 name: workflow
-version: "0.7.0"
+version: "0.8.0"
 description: "Hermes 中文研发工作流：统一模型配置，人工审批，自动开发、独立测试与审查。"
 kind: standalone

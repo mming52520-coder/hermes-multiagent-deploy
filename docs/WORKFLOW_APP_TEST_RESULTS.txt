@@ -171,3 +171,56 @@ with the complete title available on hover.
 All 33 existing frontend component tests passed in one run (1.352s).
 JS syntax and git diff --check passed. The actual local Dashboard was visually
 reviewed with all five existing tasks. No model execution was repeated for this change.
+
+2026-11-02: Conversational controller workbench v0.8.0
+Stage 1:
+- Task-bound controller uses native AIAgent, provider resolution and SessionDB.
+  Editable draft -> native triage cards -> explicit round-bound approval.
+  Conversation turns have no execution tools; discussions cannot grant approval.
+  Fresh task data is passed on every turn, including native platform receipts
+  and log tails. Persisted user messages do not contain the injected context.
+Stage 2:
+- Live role activity reads owner_admitted session bindings while workers run.
+  Public messages/tool calls/results only; reasoning fields are excluded.
+- Current delivery status, actual patches (including new files), authenticated
+  frozen-source download, explicit customer revisions and exact failed-run retry.
+- Plugin discovery only registers the owner hook. Foreign data-root dispatch
+  cannot advance this project's tasks. The real-run interruption exposed this
+  defect; native unblock retained the failed run and started a distinct retry.
+
+Relevant checks:
+- 13 controller/activity/automation/native-revision/retry tests passed (41.306s).
+- 1 added current-platform-receipt context regression passed (2.165s).
+- 3 platform discovery, evidence reuse and independent re-review tests passed
+  after the actual-cwd evidence correction (5.892s).
+- 6 new UI tests passed (1.150s): conversational draft, simplified approval,
+  running role activity/filter, accepted delivery, exact-run retry, task title.
+  The 33 legacy UI cases had passed after the initial feature implementation.
+- JS syntax, affected Python compilation and git diff --check passed.
+- Native TestClient emits an existing Starlette/httpx deprecation warning;
+  no dependency installation or upgrade was performed for these changes.
+
+Real model + Docker exercise (local artifacts, not bundled):
+- Controller generated a real task from discussion, then the operator created
+  and approved its native task cards through authenticated APP endpoints.
+- Requirement: add current_round to Workflow.status(), using the latest round
+  number, retaining existing fields and manual acceptance. Original bound source
+  stayed unchanged; implementation and tests were delivered in an isolated copy.
+- Researcher completed; Builder and independent Tester ran in parallel; the
+  platform executed 48 project tests and 9 independent cases, all passing.
+- First independent review returned FAIL solely for missing actual test cwd in
+  platform evidence. Original receipt/log and FAIL were retained. Since cwd was
+  not originally observed, it was not backfilled as a claimed measurement.
+- Platform runner now records cwd in its environment fingerprint and prints
+  pwd at execution. One necessary repeat on the same frozen candidate recorded
+  /tmp/candidate; 48 + 9 passed again. Further advancement reused that receipt.
+  Only Reviewer was restarted; no implementation/test-design rerun occurred.
+- Independent re-review returned PASS. Final acceptance was performed with the
+  actual APP confirmation button under the user's explicit authorization.
+- Multi-turn controller, actual running events, per-role tool records, code
+  patch and downloaded source were inspected. Download contains the delivered
+  implementation and excludes .git metadata. Native failure/recovery records,
+  initial and corrected receipts, HTTP action audit, patch and archive remain
+  in outputs/verification/controller-real-run, outside the distributable bundle.
+- This is a local functional exercise, not a production load/recovery or
+  multi-tenant authorization qualification. Actual API cost remains unavailable.

@@ -13,7 +13,7 @@ import sys
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 ASSETS = ("plugin.yaml", "__init__.py", "dashboard/manifest.json", "dashboard/plugin_api.py", "dashboard/app.js", "dashboard/app.css")
-OPERATOR = ("workflow_control.py", "configure_profiles.py", "hermes_baseline.py", "workflow_runtime.py", "workflow_models.py")
+OPERATOR = ("workflow_control.py", "configure_profiles.py", "hermes_baseline.py", "workflow_runtime.py", "workflow_models.py", "workflow_conversation.py", "workflow_activity.py")
 
 
 def install(home: Path, env_file: Path, enable: bool = False, archive: Path | None = None) -> Path:

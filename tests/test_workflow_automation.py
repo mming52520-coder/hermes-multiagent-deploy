@@ -58,12 +58,28 @@ class WorkflowAutomationTest(unittest.TestCase):
                 self.plugin._active.release()
             thread.assert_not_called()
 
-    def test_registers_owner_tick_and_resumes_existing_approved_work(self):
+    def test_discovery_only_registers_and_owner_tick_starts_advancement(self):
         ctx = SimpleNamespace(register_hook=Mock())
         with patch.object(self.plugin, "_on_dispatch_tick") as tick:
             self.plugin.register(ctx)
             ctx.register_hook.assert_called_once_with("on_kanban_dispatch_tick", tick)
-            tick.assert_called_once_with()
+            tick.assert_not_called()
+            ctx.register_hook.call_args.args[1](board="default")
+            tick.assert_called_once_with(board="default")
+
+    def test_foreign_home_dispatch_cannot_advance_the_installed_workflow(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plugin = root / "plugins/workflow"
+            plugin.mkdir(parents=True)
+            (plugin / "config.json").write_text(json.dumps({"hermes_home": str(root)}))
+            self.plugin.__file__ = str(plugin / "__init__.py")
+            with patch("hermes_constants.get_hermes_home", return_value=root / "other-home"), patch.object(self.plugin.threading, "Thread") as thread:
+                self.plugin._on_dispatch_tick(board="default")
+                thread.assert_not_called()
+            with patch("hermes_constants.get_hermes_home", return_value=root), patch.object(self.plugin, "_advance_pending") as advance, patch.object(self.plugin.threading, "Thread", side_effect=lambda **kw: SimpleNamespace(start=kw["target"])):
+                self.plugin._on_dispatch_tick(board="default")
+                advance.assert_called_once_with("default")
 
 
 if __name__ == "__main__":

@@ -50,7 +50,10 @@ beforeEach(async () => {
       const route = url.replace("/api/plugins/workflow", "");
       requests.push({ route, init });
       if (overrides.has(route)) return overrides.get(route)(init);
-      if (route === "/meta") return { actions_enabled: server.actions_enabled, project_name: "synthetic-project", board: "default", readiness: server.readiness, model_connections_supported: server.model_connections_supported };
+      if (route === "/meta") return { actions_enabled: server.actions_enabled, project_name: "synthetic-project", board: "default", readiness: server.readiness, model_connections_supported: server.model_connections_supported, conversation_supported: server.conversation_supported };
+      if (route === "/conversations") return { conversations: server.conversations || [] };
+      if (route.startsWith("/conversations/")) return structuredClone(server.conversation);
+      if (route.endsWith("/activity")) return structuredClone(server.activity || { events: [], roles: {}, workflow_state: "WAITING_APPROVAL" });
       if (route.startsWith("/model-connection")) return structuredClone(server.modelConnections);
       if (route === "/executions") return { executions: structuredClone(server.records) };
       if (route.includes("/evidence/")) return structuredClone(server.proofs[route.split("/").at(-1)]);
@@ -74,7 +77,7 @@ beforeEach(async () => {
       element.dispatchEvent(new dom.window.Event(element.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
     }),
     poll: async () => React.act(async () => {
-      for (const { callback, period } of [...timers.values()]) { assert.equal(period, 20000); await callback(); }
+      for (const { callback, period } of [...timers.values()]) { assert.ok([2000, 20000].includes(period)); await callback(); }
     }),
     refresh: async () => React.act(async () => { for (const { callback } of [...timers.values()]) void callback(); }),
     openDetails: async () => { if (!container.querySelector(".wf-tabs")) await view.click(container.querySelector('[aria-label="详细记录"]')); },
@@ -682,4 +685,110 @@ test("tester labels distinguish prepared cases from successful platform executio
   assert.equal(testerLabel(), "查看测试结果");
   await view.render("en");
   assert.equal(testerLabel(), "Check test results");
+});
+
+function enableController() {
+  view.server.conversation_supported = true;
+  view.server.conversations = [];
+  view.server.conversation = { id: "d".repeat(32), messages: [], status: "idle", objective: "", pending: null };
+}
+
+async function typeArea(selector, value) {
+  const area = view.container.querySelector(selector);
+  assert.ok(area);
+  await React.act(async () => {
+    Object.getOwnPropertyDescriptor(view.dom.window.HTMLTextAreaElement.prototype, "value").set.call(area, value);
+    area.dispatchEvent(new view.dom.window.Event("input", { bubbles: true }));
+  });
+}
+
+test("controller chat creates an editable task draft without starting any agents", async () => {
+  developmentExecution(); enableController();
+  view.overrides.set("/conversations", init => init?.method === "POST" ? view.server.conversation : { conversations: [] });
+  view.overrides.set(`/conversations/${view.server.conversation.id}/messages`, init => {
+    assert.equal(JSON.parse(init.body).message, "开发一个小功能");
+    Object.assign(view.server.conversation, { messages: [{ id: 1, role: "user", content: "开发一个小功能" },
+      { id: 2, role: "assistant", content: "请核对任务草案。" }], objective: "范围和固定验收标准" });
+    return { status: "running" };
+  });
+  await view.render();
+  await view.click(view.button("新建任务", ".wf-header button"));
+  assert.equal(view.container.querySelector('[role="dialog"]'), null);
+  await typeArea('.wf-chat-composer textarea', "开发一个小功能");
+  await view.click(view.button("发送"));
+  assert.ok(view.container.querySelector(".wf-chat-messages").textContent.includes("请核对任务草案"));
+  assert.equal(view.container.querySelector(".wf-task-draft textarea").value, "范围和固定验收标准");
+  await typeArea('.wf-task-draft textarea', "用户修订后的固定验收标准");
+  await view.poll();
+  assert.equal(view.container.querySelector(".wf-task-draft textarea").value, "用户修订后的固定验收标准");
+  assert.ok(view.requests.every(({ route }) => !route.includes("/actions/") && !route.endsWith("/task")));
+});
+
+test("controller task approval names the action and keeps round-bound explicit consent", async () => {
+  const record = developmentExecution(); enableController();
+  await view.render();
+  await view.click(view.button("批准并开始", ".wf-next-step button"));
+  assert.equal(view.container.querySelector('.wf-modal input[type="checkbox"]'), null);
+  assert.equal(view.container.querySelector('.wf-modal button[type="submit"]').textContent, "批准并开始");
+  view.overrides.set(`/executions/${firstId}/actions/approve`, init => {
+    const body = JSON.parse(init.body); assert.equal(body.confirmed, true); assert.equal(body.round_number, 0);
+    record.approved_write = true; record.workflow_state = "RUNNING_RESEARCH";
+    record.rounds[0].tasks.researcher.status = "running";
+    return { state: "RUNNING_RESEARCH" };
+  });
+  await view.click(view.container.querySelector('.wf-modal button[type="submit"]'));
+  assert.equal(view.container.querySelector('[role="dialog"]'), null);
+  assert.ok(view.requests.every(({ route }) => !route.endsWith("/accept")));
+});
+
+test("live worker activity follows the selected role and renders tool output as text", async () => {
+  developmentExecution(["done", "running", "running", "triage"]); enableController();
+  view.server.activity = { workflow_state: "RUNNING_BUILD_AND_TEST", roles: { researcher: { status: "done" }, builder: { status: "running" }, tester: { status: "running" }, reviewer: { status: "triage" } }, events: [
+    { id: "one", at: 1700000001, role: "builder", kind: "tool", name: "patch", text: '<img src=x onerror=bad>' },
+    { id: "two", at: 1700000002, role: "tester", kind: "message", name: "工作摘要", text: "正在编写独立用例" },
+  ] };
+  await view.render();
+  assert.ok(view.container.querySelector(".wf-activity").textContent.includes("正在编写独立用例"));
+  assert.equal(view.container.querySelector('.wf-activity img'), null);
+  await view.click(view.button("开发", ".wf-activity-filters button"));
+  assert.equal(view.container.querySelectorAll(".wf-activity-event").length, 1);
+  assert.ok(view.container.querySelector('.wf-activity-event').textContent.includes('<img src=x onerror=bad>'));
+  await view.render("en");
+  assert.equal(view.container.querySelector(".wf-controller h2").textContent, "Controller chat");
+  assert.equal(view.container.querySelector(".wf-activity h3").textContent, "Work activity");
+});
+
+test("accepted delivery has one current status and keeps the historical report collapsed", async () => {
+  const record = developmentExecution(["done", "done", "done", "done"]); enableController();
+  record.workflow_state = "ACCEPTED"; record.acceptance.status = "ACCEPTED";
+  record.rounds[0].tasks.reviewer.result = "历史报告：等待验收";
+  await view.render();
+  assert.equal(view.container.querySelector('.wf-execution .wf-badge').textContent, "已验收");
+  assert.ok(view.container.querySelector('.wf-delivery').textContent.includes("本次交付已验收"));
+  assert.equal(view.container.querySelector('.wf-raw-result').open, false);
+  assert.ok(view.button("下载交付代码"));
+  assert.equal(view.button("确认验收"), undefined);
+});
+
+test("interrupted role retry binds consent to that role and exact run", async () => {
+  const record = developmentExecution(["blocked", "triage", "triage", "triage"]); enableController();
+  record.approved_write = true; record.workflow_state = "HUMAN_REQUIRED";
+  Object.assign(record.rounds[0].tasks.researcher, { outcome: "crashed", run_id: 12 });
+  await view.render();
+  await view.click(view.button("重试失败角色", ".wf-next-step button"));
+  view.overrides.set(`/executions/${firstId}/actions/retry-worker`, init => {
+    const body = JSON.parse(init.body);
+    assert.equal(body.confirmed, true); assert.equal(body.role, "researcher");
+    assert.equal(body.run_id, 12); assert.equal(body.round_number, 0);
+    return { state: "RUNNING_RESEARCH" };
+  });
+  await view.click(view.container.querySelector('.wf-modal button[type="submit"]'));
+  assert.equal(view.requests.filter(({ route }) => route.endsWith("/retry-worker")).length, 1);
+});
+
+test("task labels use the concrete request after a generic model heading", async () => {
+  const record = developmentExecution(); enableController();
+  record.objective = "目标\n为状态接口增加轮次编号\n\n验收标准…";
+  await view.render();
+  assert.equal(view.container.querySelector('.wf-execution h3').textContent, "为状态接口增加轮次编号");
 });

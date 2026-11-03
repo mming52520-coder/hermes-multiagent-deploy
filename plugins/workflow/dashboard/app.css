@@ -160,6 +160,50 @@
 .wf-client .wf-execution.selected { box-shadow: inset 2px 0 0 var(--wf-accent); }
 .wf-client .wf-execution h3 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 0; font-size: 13px; line-height: 1.6; }
 .wf-client .wf-execution .wf-badge { flex-shrink: 0; padding: 0; border: 0; background: transparent; font-size: 10px; font-weight: 400; }
+.wf-conversational .wf-workspace { grid-template-columns: 190px minmax(300px, 1.2fr) minmax(280px, 1fr); align-items: start; }
+.wf-controller { display: flex; flex-direction: column; height: calc(100dvh - 210px); min-height: 440px; border: 1px solid var(--wf-line); border-radius: 11px; padding: 20px; background: var(--wf-panel); position: sticky; top: 90px; }
+.wf-controller h2 { font-size: 15px; }
+.wf-chat-messages { display: flex; flex-direction: column; gap: 16px; flex: 1; min-height: 0; overflow: auto; padding: 8px 0 20px; }
+.wf-chat-welcome { color: var(--wf-muted); font-size: 13px; padding: 24px 0; }
+.wf-chat-message { padding: 12px 14px; background: #111c23; border-radius: 9px; line-height: 1.8; overflow-wrap: anywhere; font-size: 13px; white-space: pre-wrap; }
+.wf-chat-message small { color: var(--wf-muted); display: block; margin-bottom: 6px; font-size: 10px; }
+.wf-chat-user { background: #25392d; margin-left: 20px; }
+.wf-chat-composer { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; margin-top: 14px; }
+.wf-chat-composer textarea, .wf-task-draft textarea { width: 100%; resize: vertical; padding: 12px; border: 1px solid var(--wf-line); border-radius: 8px; background: #10181f; color: var(--wf-text); font-size: 13px; line-height: 1.7; }
+.wf-task-draft { border-top: 1px solid var(--wf-line); padding-top: 16px; margin-top: 10px; max-height: 45%; overflow: auto; flex-shrink: 0; }
+.wf-task-draft h3 { font-size: 13px; margin-bottom: 12px; }
+.wf-task-draft .wf-button { margin-top: 12px; }
+.wf-conversational .wf-detail-header, .wf-conversational .wf-content { padding: 20px; }
+.wf-conversational .wf-title-line { flex-wrap: wrap; }
+.wf-conversational .wf-title-line h2 { font-size: 16px; }
+.wf-conversational .wf-dag { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.wf-activity { border-top: 1px solid var(--wf-line); padding-top: 18px; margin-top: 20px; }
+.wf-activity h3, .wf-delivery h3 { font-size: 14px; }
+.wf-activity-filters { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 12px; }
+.wf-activity-filters .active { color: var(--wf-accent); }
+.wf-activity-events { max-height: 450px; overflow: auto; }
+.wf-activity-event { border-left: 2px solid var(--wf-line); padding: 0 0 16px 12px; font-size: 12px; }
+.wf-activity-event > div { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.wf-activity-event time { font-size: 10px; color: var(--wf-muted); }
+.wf-activity-event pre, .wf-delivery pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; font-size: 11px; line-height: 1.7; }
+.wf-activity-event summary, .wf-raw-result summary, .wf-delivery summary { cursor: pointer; }
+.wf-raw-result { margin-top: 20px; font-size: 12px; }
+.wf-raw-result .wf-task-results { margin-top: 14px; }
+.wf-delivery { border: 1px solid #405e37; background: #203126; padding: 16px; border-radius: 8px; font-size: 12px; line-height: 1.8; }
+.wf-delivery p { margin-top: 8px; color: var(--wf-accent); }
+.wf-delivery ul { padding-left: 18px; }
+.wf-delivery .wf-next-actions { flex-wrap: wrap; max-width: none; }
+@media (max-width: 1150px) {
+  .wf-conversational .wf-workspace { grid-template-columns: 170px minmax(0, 1fr); }
+  .wf-conversational .wf-detail { grid-column: 2; }
+  .wf-controller { min-height: 420px; position: static; }
+}
+@media (max-width: 720px) {
+  .wf-conversational .wf-workspace { grid-template-columns: minmax(0, 1fr); }
+  .wf-conversational .wf-controller { grid-row: 1; padding: 16px; }
+  .wf-conversational .wf-detail { grid-column: 1; order: 0; }
+  .wf-conversational .wf-executions { max-height: 220px; }
+}
 .wf-client .wf-title-line h2 { font-size: 20px; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .wf-client .wf-title-line { margin-top: 0; }
 .wf-text-button { border: 0; background: none; color: var(--wf-muted); font-size: 12px; padding: 0; margin-top: 14px; }

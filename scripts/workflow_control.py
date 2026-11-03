@@ -688,7 +688,8 @@ class Workflow:
             )
             command_text = f"{manifest['test_command']} && {independent_command}"
             environment = {"image_id": image_id, "network": "none", "cpus": 1, "memory_mb": 1024,
-                           "user": f"{os.getuid()}:{os.getgid()}", "python_bytecode": False}
+                           "user": f"{os.getuid()}:{os.getgid()}", "python_bytecode": False,
+                           "cwd": "/tmp/candidate"}
             inputs = {"candidate_digest": row["candidate_digest"], "candidate_revision":row["candidate_revision"], "environment": environment,
                       "command": command_text, "independent_tests_digest": row["independent_tests_digest"]}
             evidence_key = digest(inputs)
@@ -718,7 +719,7 @@ class Workflow:
                     "--mount", f"type=bind,src={source},dst=/input,readonly",
                     "--mount", f"type=bind,src={tests},dst=/independent-tests,readonly",
                     "--entrypoint", "/bin/sh", image_id, "-c",
-                    'cp -a /input/. /tmp/candidate && cd /tmp/candidate && exec /bin/sh -c "$1"',
+                    'cp -a /input/. /tmp/candidate && cd /tmp/candidate && printf "Verification cwd: " && pwd -P && exec /bin/sh -c "$1"',
                     "verification", command_text,
                 ]
                 row["verification_started_at"] = time.time()
@@ -1027,6 +1028,46 @@ class Workflow:
         if state == "RUNNING_REVIEW":
             result["dispatch"] = workflow_runtime.dispatch(self)
         return result
+
+    def retry_worker(self, execution: str, role: str, expected_round: int, expected_run_id: int, reason: str) -> dict:
+        """Explicitly retry one terminal failed role through native unblock/claim history."""
+        with self.locked(execution), workflow_runtime.connect_closing(board=self.board) as conn:
+            manifest = self.load(execution)
+            row = manifest["rounds"][-1]
+            if not self.modern(manifest) or not manifest["approved_write"] or row["number"] != expected_round:
+                raise Rejected("ROUND_CHANGED")
+            if role not in row["tasks"] or (self.path(execution) / "acceptance.json").exists():
+                raise Rejected("当前角色不能重试。")
+            task = self.kb.get_task(conn, row["tasks"][role])
+            run = self.kb.latest_run(conn, task.id)
+            if (task.status != "blocked" or run is None or run.id != expected_run_id
+                    or run.outcome not in {"crashed", "failed", "spawn_failed", "timeout", "timed_out", "gave_up"}):
+                raise Rejected("角色状态已经变化，请重新查看运行结果。")
+            self.budget(manifest, conn, new_work=True)
+            self.kb.add_comment(conn, task.id, author="operator-retry", body=reason.strip() or "环境问题已处理，按原授权重试此角色，保留失败记录并复用已有有效产物。")
+            if not self.kb.unblock_task(conn, task.id):
+                raise Rejected("原生任务重试被拒绝。")
+        return self.advance(execution)
+
+    def request_changes(self, execution: str, reason: str, expected_round: int) -> dict:
+        """Record an explicit customer revision without fabricating a Reviewer FAIL."""
+        if not reason.strip():
+            raise Rejected("请填写修改意见。")
+        with self.locked(execution), workflow_runtime.connect_closing(board=self.board) as conn:
+            manifest = self.load(execution)
+            row = manifest["rounds"][-1]
+            if not self.modern(manifest) or row["number"] != expected_round:
+                raise Rejected("ROUND_CHANGED")
+            if (self.path(execution) / "acceptance.json").exists():
+                raise Rejected("已验收任务请创建后续任务。")
+            self.acceptance(manifest, conn)
+            if len(manifest["rounds"]) - 1 >= manifest["budget"]["max_rounds"]:
+                raise Rejected("REPAIR_BUDGET")
+            manifest["failures"].append({"kind": "implementation", "reason": reason.strip(),
+                "fingerprint": digest(["customer-change", row["number"], reason.strip()]),
+                "at": time.time(), "requested_by": "customer"})
+            self.new_round(manifest, conn, row["tasks"]["reviewer"])
+            return manifest
 
     def repair(self, execution: str, kind: str, reason: str) -> dict:
         if kind not in FAILURE_KINDS or not reason.strip():

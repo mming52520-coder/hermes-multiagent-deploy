@@ -11,12 +11,14 @@ import re
 import sqlite3
 import subprocess
 import sys
+import tarfile
 import types
 from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from fastapi.responses import FileResponse
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 ROLES = ("researcher", "builder", "tester", "reviewer")
@@ -50,6 +52,22 @@ class Action(BaseModel):
     round_number: int | None = Field(default=None, ge=0)
     kind: Literal["implementation", "test", "environment", "api_model", "permission", "requirements"] = "implementation"
     reason: str = Field(default="", max_length=2000)
+    role: Literal["researcher", "builder", "tester", "reviewer"] | None = None
+    run_id: int | None = Field(default=None, ge=1)
+
+
+class ConversationCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    execution: str = ""
+
+
+class ConversationMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    message: str = Field(min_length=1, max_length=4000)
+
+
+def conversations_module():
+    return importlib.import_module(core_module().__package__ + ".workflow_conversation")
 
 
 class ModelParameters(BaseModel):
@@ -266,6 +284,7 @@ def task_summary(conn, task_id: str, *, include_output: bool = False) -> dict:
         return {"id": task_id, "status": "missing", "outcome": None}
     run = kb.latest_run(conn, task_id)
     data = {"id": task.id, "status": task.status, "assignee": task.assignee,
+            "run_id": run.id if run else None,
             "started_at": task.started_at, "completed_at": task.completed_at,
             "max_runtime_seconds": task.max_runtime_seconds,
             "outcome": run.outcome if run else None}
@@ -304,13 +323,128 @@ def metadata():
     settings = read_settings()
     env = bound_environment(settings)
     enabled = settings.get("allow_actions") is True
-    return {"name": "Hermes Workflow", "version": "0.7.0", "phase": "P0_PARTIAL_PASS",
+    return {"name": "Hermes Workflow", "version": "0.8.0", "phase": "P0_PARTIAL_PASS",
+            "conversation_supported": True,
             "project_name": Path(env["PROJECT_DIR"]).name, "board": env["BOARD_SLUG"],
             "actions_enabled": enabled,
             "model_connections_supported": importlib.util.find_spec("hermes_cli.provider_catalog") is not None,
             "readiness": None,
             "limitations": ["模型调用次数与实际费用硬限额尚未完成。", "真实 Worker 隔离与服务级恢复仍待验证。"],
             "unknown_cost": True}
+
+
+@router.get("/conversations")
+def conversations():
+    return {"conversations": conversations_module().listing(bound_workflow(read_settings()))}
+
+
+@router.post("/conversations")
+def create_conversation(request: Request, body: ConversationCreate):
+    settings = read_settings()
+    require_action(request, settings)
+    if body.execution:
+        load_manifest(settings, body.execution)
+    return conversations_module().create(bound_workflow(settings), body.execution)
+
+
+@router.get("/conversations/{conversation}")
+def conversation_details(conversation: str):
+    try:
+        return conversations_module().view(bound_workflow(read_settings()), conversation)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.post("/conversations/{conversation}/messages")
+def conversation_message(request: Request, conversation: str, body: ConversationMessage):
+    settings = read_settings()
+    require_action(request, settings)
+    workflow = bound_workflow(settings)
+    try:
+        row = conversations_module().load(workflow, conversation)
+        context = {"project": workflow.project.name}
+        if row["execution_id"]:
+            task = execution_details(row["execution_id"])
+            context["task"] = task
+            roles = ["platform"] if task["workflow_version"] >= 2 else ["builder", "reviewer"]
+            context["verification"] = {role: evidence(row["execution_id"], task["rounds"][-1]["number"], role)
+                                       for role in roles}
+        return conversations_module().start(workflow, conversation, body.message, context)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post("/conversations/{conversation}/task")
+def conversation_task(request: Request, conversation: str, body: Submission):
+    settings = read_settings()
+    require_action(request, settings)
+    if not body.objective.strip():
+        raise HTTPException(422, "请填写任务需求。")
+    try:
+        return conversations_module().submit(bound_workflow(settings), conversation, body.objective)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.get("/executions/{execution}/activity")
+def execution_activity(execution: str):
+    settings = read_settings()
+    load_manifest(settings, execution)
+    module = importlib.import_module(core_module().__package__ + ".workflow_activity")
+    return module.activity(bound_workflow(settings), execution)
+
+
+@router.get("/executions/{execution}/delivery")
+def delivery(execution: str):
+    settings = read_settings()
+    load_manifest(settings, execution)
+    workflow = bound_workflow(settings)
+    manifest = workflow.load(execution)
+    row = manifest["rounds"][-1]
+    source = delivery_source(workflow, row)
+    patch = core_module().git(source, "diff", "--no-ext-diff", "--no-textconv", "--binary", manifest["source_revision"])
+    for name in sorted(row["candidate_files"].keys() - manifest["source_files"].keys()):
+        result = subprocess.run(["git", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C", str(source),
+                                 "diff", "--no-index", "--no-ext-diff", "--no-textconv", "--binary", "--", "/dev/null", name],
+                                capture_output=True, text=True)
+        if result.returncode not in {0, 1}:
+            raise HTTPException(409, result.stderr)
+        patch += "\n" + result.stdout
+    return {"changed_files": execution_details(execution)["changed_files"], "patch": patch,
+            "candidate_digest": row["candidate_digest"], "accepted": manifest.get("workflow_state") == "ACCEPTED"}
+
+
+def delivery_source(workflow, row: dict) -> Path:
+    if not row.get("snapshot_ready") or not row.get("candidate_digest"):
+        raise HTTPException(409, "交付代码尚未准备完成。")
+    source = Path(row["review"])
+    core = core_module()
+    if core.digest(core.tree_files(source)) != row["candidate_digest"]:
+        raise HTTPException(409, "交付代码已变化，请重新验证。")
+    return source
+
+
+@router.get("/executions/{execution}/download")
+def download(execution: str):
+    settings = read_settings()
+    load_manifest(settings, execution)
+    workflow = bound_workflow(settings)
+    with workflow.locked(execution):
+        manifest = workflow.load(execution)
+        row = manifest["rounds"][-1]
+        source = delivery_source(workflow, row)
+        target = workflow.path(execution) / ("delivery-" + row["candidate_digest"] + ".tar.gz")
+        if not target.exists():
+            with tarfile.open(target, "w:gz") as archive:
+                for file in sorted(source.rglob("*")):
+                    relative = file.relative_to(source)
+                    if ".git" in relative.parts:
+                        continue
+                    if file.is_symlink() and not file.resolve().is_relative_to(source.resolve()):
+                        continue
+                    archive.add(file, arcname=str(Path(workflow.project.name) / relative), recursive=False)
+            target.chmod(0o600)
+    return FileResponse(target, media_type="application/gzip", filename=f"{workflow.project.name}-{execution[:8]}.tar.gz")
 
 
 @router.get("/executions")
@@ -408,7 +542,7 @@ def submit(request: Request, body: Submission):
 
 @router.post("/executions/{execution}/actions/{action}")
 def run_action(request: Request, execution: str,
-               action: Literal["approve", "advance", "launch", "start", "prepare-review", "verify-builder", "verify-reviewer", "accept", "repair"], body: Action):
+               action: Literal["approve", "advance", "launch", "start", "prepare-review", "verify-builder", "verify-reviewer", "accept", "repair", "request-changes", "retry-worker"], body: Action):
     settings = read_settings()
     manifest = load_manifest(settings, execution)
     try:
@@ -435,6 +569,16 @@ def run_action(request: Request, execution: str,
             workflow.repair(execution, body.kind, body.reason)
             return {"execution_id": execution, "action": action, "completed": True,
                     "round_number": workflow.load(execution)["rounds"][-1]["number"]}
+        elif action == "request-changes":
+            if body.round_number is None:
+                raise HTTPException(400, "请刷新并确认当前执行轮次。")
+            workflow.request_changes(execution, body.reason, body.round_number)
+            return {"execution_id": execution, "action": action, "completed": True,
+                    "round_number": workflow.load(execution)["rounds"][-1]["number"]}
+        elif action == "retry-worker":
+            if body.role is None or body.run_id is None or body.round_number is None:
+                raise HTTPException(400, "请刷新并确认需要重试的角色。")
+            return workflow.retry_worker(execution, body.role, body.round_number, body.run_id, body.reason)
         else:
             workflow.accept(execution)
         return {"execution_id": execution, "action": action, "completed": True}

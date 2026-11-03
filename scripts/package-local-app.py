@@ -19,6 +19,7 @@ SOURCES = (
     "scripts/configure_profiles.py", "scripts/hermes_baseline.py",
     "scripts/workflow_runtime.py",
     "scripts/workflow_models.py",
+    "scripts/workflow_conversation.py", "scripts/workflow_activity.py",
     "souls/researcher.md", "souls/builder.md", "souls/tester.md", "souls/reviewer.md", "souls/orchestrator.md",
     "tests/check_workflow_models.py",
     "scripts/dashboard-zh.js", "scripts/package-local-app.py",
@@ -27,6 +28,7 @@ SOURCES = (
     "tests/workflow_dashboard.test.cjs",
     "tests/check_workflow_writes_v0225.py",
     "tests/test_workflow.py", "tests/test_workflow_v2.py", "tests/test_workflow_automation.py",
+    "tests/test_workflow_conversation.py", "tests/test_workflow_app.py",
     "docs/WORKFLOW_APP_BUTTONS_ZH.md",
     "docs/WORKFLOW_APP_TEST_RESULTS.txt",
     "docs/API_PROVIDER_DEFAULTS_ZH.md",
@@ -65,7 +67,7 @@ def package(source: Path, output: Path) -> None:
         "hermes_source_commit": "bf0203a794a07aac3ff764972ab9087baa4e4f4e",
         "upstream_frontend_changes": "补齐模型、配置、密钥、频道、系统、自动化模板及弹窗的中文；复用原生 i18n 切换和持久化；工作流同步中英文；完整源码补丁及语言行为测试随包提供",
         "workflow_writes_v0225": "流程v2：审批后由原生owner自动推进开发、独立测试和审查，最终人工确认交付；历史任务继续原规则", "includes_credentials_or_user_state": False,
-        "workflow_frontend_changes": "统一配置方案、开发、独立测试、独立审查的连接；导入Key读取模型目录；主界面显示当前必要操作与真实结果",
+        "workflow_frontend_changes": "v0.8：总控原生对话与任务草案、人工审批、各角色实时公开活动、交付补丁与源码下载；统一配置各角色连接",
         "model_connections": "复用 Hermes 原生厂商与凭据接口；可逐角色覆盖；内置官方 API 默认值，导入 Key 后主动刷新模型列表；保存不触发推理",
     }, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     files["MANIFEST.sha256"] = "".join(hashlib.sha256(data).hexdigest() + "  " + name + "\n"

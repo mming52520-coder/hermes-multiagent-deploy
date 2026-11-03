@@ -50,6 +50,14 @@ def _advance_pending(board=None):
 
 
 def _on_dispatch_tick(*, board=None, dry_run=False, **_kwargs):
+    from hermes_constants import get_hermes_home
+    settings_file = Path(__file__).resolve().parent / "config.json"
+    if not settings_file.is_file():
+        return
+    home = Path(json.loads(settings_file.read_text())["hermes_home"]).resolve()
+    event_home = Path(get_hermes_home()).resolve()
+    if event_home != home and not event_home.is_relative_to(home / "profiles"):
+        return
     if dry_run or not _active.acquire(blocking=False):
         return
 
@@ -64,4 +72,3 @@ def _on_dispatch_tick(*, board=None, dry_run=False, **_kwargs):
 
 def register(ctx):
     ctx.register_hook("on_kanban_dispatch_tick", _on_dispatch_tick)
-    _on_dispatch_tick()

@@ -3,7 +3,7 @@
   "label": "工作流",
   "description": "创建目标、批准执行、查看开发与测试结果",
   "icon": "GitBranch",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "tab": {"path": "/workflow", "position": "after:kanban"},
   "entry": "app.js",
   "css": "app.css",
