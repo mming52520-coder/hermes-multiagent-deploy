@@ -792,3 +792,36 @@ test("task labels use the concrete request after a generic model heading", async
   await view.render();
   assert.equal(view.container.querySelector('.wf-execution h3').textContent, "为状态接口增加轮次编号");
 });
+
+test("pre-authorized auto acceptance, decision reasons and reject are visible to the customer", async () => {
+  const record = developmentExecution(["done", "done", "done", "done"]); enableController();
+  record.approved_write = true;
+  record.workflow_state = "READY_FOR_ACCEPTANCE"; record.acceptance.status = "READY_FOR_ACCEPTANCE";
+  record.decision = { round: 0, reasons: [{ category: "新增或升级依赖", paths: ["package.json"] }] };
+  record.rounds[0].tasks.reviewer.findings = [
+    { severity: "minor", summary: "naming nit" }, { severity: "blocker", summary: "crash on empty input", file: "app.py" }];
+  await view.render();
+  await view.click(view.button("独立审查", ".wf-node strong")?.parentElement);
+  const delivery = view.container.querySelector(".wf-delivery").textContent;
+  assert.ok(delivery.includes("需要你决定的改动") && delivery.includes("package.json"));
+  await view.click(view.button("不做了"));
+  assert.ok(view.container.querySelector(".wf-modal").textContent.includes("定了不做的事"));
+  await typeArea(".wf-modal textarea", "不引入这个依赖");
+  view.overrides.set(`/executions/${firstId}/actions/reject`, (init) => {
+    assert.equal(JSON.parse(init.body).reason, "不引入这个依赖");
+    record.workflow_state = "REJECTED"; record.rejection = { reason: "不引入这个依赖" };
+    return { completed: true };
+  });
+  await view.click(view.container.querySelector('.wf-modal button[type="submit"]'));
+  assert.equal(view.container.querySelector(".wf-execution .wf-badge").textContent, "已决定不做");
+  record.workflow_state = "ACCEPTED"; record.acceptance.status = "ACCEPTED"; record.accepted_by = "policy";
+  await view.poll();
+  assert.ok(view.container.querySelector(".wf-delivery").textContent.includes("已在授权范围内自动验收"));
+});
+
+test("a Feishu card link opens the linked execution", async () => {
+  view.dom.reconfigure({ url: "http://localhost/workflow?execution=" + secondId });
+  view.server.records.push(execution(secondId));
+  await view.render();
+  assert.equal(view.container.querySelector(".wf-title-line h2").textContent, view.server.records[1].objective);
+});

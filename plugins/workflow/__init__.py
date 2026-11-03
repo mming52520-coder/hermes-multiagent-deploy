@@ -39,7 +39,7 @@ def _advance_pending(board=None):
             manifest = json.loads(file.read_text(encoding="utf-8"))
             if manifest.get("workflow_version", 1) < 2 or not manifest.get("approved_write"):
                 continue
-            if manifest.get("workflow_state") in {"READY_FOR_ACCEPTANCE", "ACCEPTED", "REPAIR_REQUIRED", "HUMAN_REQUIRED"}:
+            if manifest.get("workflow_state") in {"READY_FOR_ACCEPTANCE", "ACCEPTED", "REPAIR_REQUIRED", "HUMAN_REQUIRED", "REJECTED"}:
                 continue
             if (file.parent / "acceptance.json").exists():
                 continue

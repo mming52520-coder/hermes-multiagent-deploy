@@ -26,6 +26,19 @@
     "下载交付代码": "Download source",
     "确认验收": "Accept delivery",
     "审查问题": "Review findings",
+    "不做了": "Won't do",
+    "已决定不做": "Decided not to do",
+    "不做的原因（原话会被记录）": "Reason (recorded verbatim)",
+    "需要你决定的改动": "Changes that need your decision",
+    "备注（可选，会记入「已定的事」）": "Note (optional, saved to decisions)",
+    "已在授权范围内自动验收": "Accepted automatically within the pre-authorized scope",
+    "记录到「定了不做的事」，以后遇到同类请求直接按此回答，不再询问。": "Saved to the won't-do list; similar requests are answered from it without asking again.",
+    "数据库结构或迁移": "Database schema or migration",
+    "CI、部署或权限配置": "CI, deployment or permissions",
+    "密钥或凭据": "Secrets or credentials",
+    "新增或升级依赖": "New or upgraded dependencies",
+    "删除文件": "Deleted files",
+    "操作员指定的路径": "Operator-listed paths",
     "阻断问题": "Blocker",
     "次要问题": "Minor",
     "只有阻断问题会要求修改；次要问题记录在案，不打回。": "Only blockers require changes; minor findings are recorded without sending the work back.",
@@ -537,6 +550,7 @@
     repair: ["继续修改", "按修改意见继续开发。"],
     "request-changes": ["提出修改", "按本次修改意见创建新轮次并执行，完成后再次验收。"],
     "retry-worker": ["重试失败角色", "保留失败记录并按原需求重试当前角色。"],
+    reject: ["不做了", "记录到「定了不做的事」，以后遇到同类请求直接按此回答，不再询问。"],
   };
   function cx() { return Array.from(arguments).filter(Boolean).join(" "); }
   function short(value) { return value ? String(value).slice(0, 10) : "尚未生成"; }
@@ -603,6 +617,7 @@
     const tasks = current(detail);
     if (detail.acceptance.status === "ACCEPTED") return { title: "交付已验收", text: "当前候选与验证记录已通过验收，可在证据页核对交付内容。", evidence: true };
     if (detail.workflow_version >= 2) {
+      if (detail.workflow_state === "REJECTED") return { title: "已决定不做", text: detail.rejection?.reason };
       if (detail.workflow_state === "REPAIR_REQUIRED") return { title: "需要修改", action: "repair" };
       if (detail.acceptance.status === "READY_FOR_ACCEPTANCE" || detail.workflow_state === "READY_FOR_ACCEPTANCE") return { title: "等待确认交付", action: "accept" };
       if (!detail.approved_write) return { title: "等待确认需求", action: "approve" };
@@ -766,6 +781,15 @@
       role === "reviewer" && h(ReviewFindings, { findings: task?.findings }));
   }
 
+  function DecisionReasons({ decision }) {
+    const ui = useText();
+    const reasons = (decision?.reasons || []).filter(item => item.category !== "未开启自动验收");
+    if (!reasons.length) return null;
+    return h("div", { className: "wf-decision" }, h("h4", null, ui("需要你决定的改动")),
+      h("ul", null, reasons.map((item, index) => h("li", { key: index }, h("strong", null, ui(item.category)),
+        !!item.paths?.length && h("span", null, " " + item.paths.slice(0, 8).join("、"))))));
+  }
+
   const SEVERITY = { blocker: ["阻断问题", "amber"], minor: ["次要问题", "neutral"] };
   function ReviewFindings({ findings }) {
     const ui = useText();
@@ -781,6 +805,7 @@
   }
 
   function customerStatus(row) {
+    if (row.workflow_state === "REJECTED") return "已决定不做";
     if (row.workflow_state === "ACCEPTED" || row.acceptance?.status === "ACCEPTED") return "已验收";
     if (row.workflow_state === "READY_FOR_ACCEPTANCE" || row.acceptance?.status === "READY_FOR_ACCEPTANCE") return "待验收";
     if (row.workflow_state === "REPAIR_REQUIRED") return "待修复";
@@ -928,7 +953,8 @@
     if (!ready) return null;
     return h("section", { className: "wf-delivery", "aria-label": ui("交付结果") },
       h("h3", null, ui("交付结果")),
-      h("p", null, ui(detail.workflow_state === "ACCEPTED" ? "本次交付已验收" : "等待你确认验收")),
+      h("p", null, ui(detail.workflow_state === "ACCEPTED" ? (detail.accepted_by === "policy" ? "已在授权范围内自动验收" : "本次交付已验收") : "等待你确认验收")),
+      detail.workflow_state === "READY_FOR_ACCEPTANCE" && h(DecisionReasons, { decision: detail.decision }),
       h("ul", null, h("li", null, ui("项目测试和独立测试已通过")), h("li", null, ui("独立审查已通过"))),
       h("div", { className: "wf-next-actions" },
         h("button", { className: "wf-button", onClick: changes }, ui("查看代码改动")),
@@ -942,7 +968,10 @@
     const ui = useText();
     const { locale } = SDK.useI18n();
     const formatDate = value => date(value, locale);
-    const [meta, setMeta] = useState(null), [rows, setRows] = useState(null), [selected, setSelected] = useState(null);
+    const [meta, setMeta] = useState(null), [rows, setRows] = useState(null), [selected, setSelected] = useState(() => {
+      const linked = new URLSearchParams(window.location.search).get("execution");
+      return linked && /^[0-9a-f]{32}$/.test(linked) ? linked : null;
+    });
     const [snapshotDetail, setDetail] = useState(null), [tab, setTab] = useState("overview"), [focus, setFocus] = useState("researcher");
     const [query, setQuery] = useState(""), [error, setError] = useState("");
     const [settingsOpen, setSettingsOpen] = useState(false), [showDetails, setShowDetails] = useState(false);
@@ -1081,7 +1110,7 @@
     const completed = roles.filter(role => finished(tasks[role])).length;
     const conversational = !!meta?.conversation_supported;
     const actionLabel = key => development && key === "approve" ? "批准并开始" : development && key === "repair" ? (conversational ? "批准修复" : "批准整改并执行") : development && key === "accept" && conversational ? "确认验收" : ACTIONS[key][0];
-    function openAction(key) { const retry_role = roles.find(role => tasks[role]?.status === "blocked"); setAck(development && conversational); setDialogExecution(selected); setDialogTarget({ workflow_version: detail.workflow_version, objective: detail.objective, revision: detail.source_revision, candidate_digest: detail.candidate_digest, round_number: detail.rounds.at(-1).number, retry_role, run_id: tasks[retry_role]?.run_id }); setError(""); setDialog(key); }
+    function openAction(key) { const retry_role = roles.find(role => tasks[role]?.status === "blocked"); setAck(development && conversational); setDialogExecution(selected); setDialogTarget({ workflow_version: detail.workflow_version, objective: detail.objective, revision: detail.source_revision, candidate_digest: detail.candidate_digest, round_number: detail.rounds.at(-1).number, decision: detail.decision, retry_role, run_id: tasks[retry_role]?.run_id }); setError(""); setDialog(key); }
     function focusStage(role) { setFocus(role); document.querySelector(".workflow-app .wf-node-" + role)?.focus(); }
     const actionButton = key => h("button", { key, className: "wf-button", disabled: !!actionBlocked(key), title: actionBlocked(key) || ui(ACTIONS[key][1]), onClick: () => openAction(key) }, ui(actionLabel(key)));
 
@@ -1157,6 +1186,7 @@
                       : step.action ? h("button", { className: "wf-button wf-primary", disabled: !!actionBlocked(step.action), onClick: () => openAction(step.action) }, ui(actionLabel(step.action)))
                         : step.focus && h("button", { className: "wf-button", onClick: () => focusStage(step.focus) }, ui("查看阻塞阶段")))),
                 conversational && detail.workflow_state === "READY_FOR_ACCEPTANCE" && h("button", { className: "wf-button", disabled: !canOperate, onClick: () => openAction("request-changes") }, ui("提出修改")),
+                development && ["READY_FOR_ACCEPTANCE", "REPAIR_REQUIRED", "HUMAN_REQUIRED", "WAITING_APPROVAL"].includes(detail.workflow_state) && h("button", { className: "wf-button", disabled: !canOperate, onClick: () => openAction("reject") }, ui("不做了")),
                 h("div", { className: "wf-progress" }, h("progress", { "aria-label": ui("阶段完成进度"), max: 4, value: completed })),
                 h("div", { className: "wf-dag", "aria-label": ui(development ? "方案 → 开发与独立测试 → 独立审查" : "调查 → 开发 → 独立审查 → 最终汇总") }, roles.map(role => h("button", {
                   key: role, className: cx("wf-node", "wf-node-" + role, "wf-state-" + (tasks[role]?.status || "missing"), focus === role && "focused"),
@@ -1197,6 +1227,10 @@
                 h("details", null, h("summary", null, ui("完整需求")), h("p", null, dialogTarget.objective),
                   h("small", null, ui("源版本 {0} · 第 {1} 轮", short(dialogTarget.revision), dialogTarget.round_number + 1)))),
               h("p", null, ui(development && dialog === "approve" ? "批准后自动开发、测试和审查，完成后由你确认交付。" : ACTIONS[dialog][1])),
+              dialog === "reject" && h("label", null, ui("不做的原因（原话会被记录）"), h("textarea", { required: true, maxLength: 2000, rows: 3, value: reason, onChange: event => setReason(event.target.value) })),
+              dialog === "accept" && (dialogTarget.decision?.reasons || []).some(item => item.category !== "未开启自动验收") && h(R.Fragment, null,
+                h(DecisionReasons, { decision: dialogTarget.decision }),
+                h("label", null, ui("备注（可选，会记入「已定的事」）"), h("textarea", { maxLength: 2000, rows: 2, value: reason, onChange: event => setReason(event.target.value) }))),
               ["repair", "request-changes"].includes(dialog) && h(R.Fragment, null,
                 h("label", null, ui("修改意见"), h("textarea", { required: true, maxLength: 2000, rows: 3, value: reason, onChange: event => setReason(event.target.value) })),
                 dialog === "repair" && h("details", { className: "wf-modal-options" }, h("summary", null, ui("更多选项")),

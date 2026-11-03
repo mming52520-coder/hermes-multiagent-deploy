@@ -22,11 +22,11 @@ import time
 if __package__:
     from .configure_profiles import load_env_file, read_yaml, worker_mounts, write_yaml
     from .hermes_baseline import verify_workflow_source as verify_source
-    from . import workflow_runtime
+    from . import workflow_runtime, workflow_policy, workflow_notify
 else:
     from configure_profiles import load_env_file, read_yaml, worker_mounts, write_yaml
     from hermes_baseline import verify_workflow_source as verify_source
-    import workflow_runtime
+    import workflow_runtime, workflow_policy, workflow_notify
 
 LEGACY_ROLES = ("researcher", "builder", "reviewer", "orchestrator")
 ROLES = ("researcher", "builder", "tester", "reviewer")
@@ -311,6 +311,11 @@ class Workflow:
                     )
                 if role == "researcher":
                     body += "Write /output/DESIGN.md with requirements, observable outputs and an acceptance-scenario matrix.\n"
+                    recorded = workflow_policy.read_decisions(self.root, self.board, limit=3000)
+                    if any(recorded.values()):
+                        body += ("Human decisions already made for this project (follow them; do not re-ask; "
+                                 "if the objective conflicts with one, say so in DESIGN.md):\n"
+                                 + recorded["approved"] + "\n" + recorded["rejected"] + "\n")
                 elif role == "tester":
                     body += (
                         "In parallel with Builder, design independent acceptance tests from the Researcher handoff. "
@@ -384,6 +389,8 @@ class Workflow:
                         "max_runs":int(self.env.get("WORKFLOW_MAX_RUNS", "12")),
                         "max_cost_usd":self.env.get("WORKFLOW_MAX_COST_USD") or None,
                     },
+                    # Snapshot: later env edits never widen an existing execution's scope.
+                    "policy":workflow_policy.policy_from_env(self.env),
                 }
                 self.new_round(manifest, conn)
                 return manifest
@@ -419,6 +426,8 @@ class Workflow:
             manifest = self.load(execution)
             if expected_round is not None and manifest["rounds"][-1]["number"] != expected_round:
                 raise Rejected("ROUND_CHANGED: review the current round before approving")
+            if manifest.get("workflow_state") == "REJECTED":
+                raise Rejected("这项任务已决定不做；如需重做请新建任务。")
             self.budget(manifest, conn, new_work=True)
             row = manifest["rounds"][-1]
             if "candidate_digest" in row:
@@ -881,17 +890,48 @@ class Workflow:
                 "policy_digest":digest([manifest["budget"],manifest["test_command"],manifest["image"]]),
                 "verification_receipts":refs, "accepted_at":time.time(), "actual_api_cost_usd":None}
 
-    def accept(self, execution: str) -> dict:
+    def record_acceptance(self, manifest: dict, conn, accepted_by: str = "operator") -> dict:
+        """Write the acceptance record. Caller holds the execution lock."""
+        result = {**self.acceptance(manifest, conn), "accepted_by": accepted_by}
+        write_json(self.path(manifest["execution_id"]) / "acceptance.json", result)
+        self.kb.add_comment(conn, manifest["rounds"][-1]["tasks"]["reviewer" if self.modern(manifest) else "orchestrator"],
+                            author="operator-quality-gate", body=json.dumps(result, sort_keys=True))
+        if self.modern(manifest):
+            manifest["workflow_state"] = "ACCEPTED"
+            self.save(manifest)
+        return result
+
+    def accept(self, execution: str, note: str = "") -> dict:
         with self.locked(execution), workflow_runtime.connect_closing(board=self.board) as conn:
             manifest = self.load(execution)
-            result = self.acceptance(manifest, conn)
-            write_json(self.path(execution) / "acceptance.json", result)
-            self.kb.add_comment(conn, manifest["rounds"][-1]["tasks"]["reviewer" if self.modern(manifest) else "orchestrator"],
-                                author="operator-quality-gate", body=json.dumps(result, sort_keys=True))
-            if self.modern(manifest):
-                manifest["workflow_state"] = "ACCEPTED"
-                self.save(manifest)
+            result = self.record_acceptance(manifest, conn)
+            reasons = [item for item in manifest.get("decision", {}).get("reasons", [])
+                       if item["category"] != "未开启自动验收"]
+            if note.strip() or reasons:
+                summary = "；".join(item["category"] + ("：" + "、".join(item["paths"][:5]) if item["paths"] else "")
+                                   for item in reasons)
+                workflow_policy.record_decision(self.root, self.board, "approved", execution=execution,
+                    objective=manifest["objective"],
+                    text=(note.strip() or "确认交付") + (f"\n（批准的改动：{summary}）" if summary else ""))
             return result
+
+    def reject(self, execution: str, reason: str) -> dict:
+        """The human decided not to do this. Record it so it is not raised again."""
+        if not reason.strip():
+            raise Rejected("请写明不做的原因，之后遇到同类请求会按此回答。")
+        with self.locked(execution), workflow_runtime.connect_closing(board=self.board) as conn:
+            manifest = self.load(execution)
+            if (self.path(execution) / "acceptance.json").exists():
+                raise Rejected("已验收任务不能再标记为不做。")
+            if any(self.kb.get_task(conn, tid).status == "running" for tid in manifest["rounds"][-1]["tasks"].values()):
+                raise Rejected("仍有角色在运行，请等待其结束后再决定。")
+            manifest["approved_write"] = False
+            manifest["workflow_state"] = "REJECTED"
+            manifest["rejection"] = {"reason": reason.strip(), "at": time.time()}
+            self.save(manifest)
+            workflow_policy.record_decision(self.root, self.board, "rejected", execution=execution,
+                                            objective=manifest["objective"], text=reason.strip())
+            return manifest
 
     def retry_review(self, execution: str, reason: str, *, expected_run_id: int,
                      runner=subprocess.run) -> dict:
@@ -958,8 +998,43 @@ class Workflow:
             self.save(manifest)
         return self.advance(execution, runner)
 
+    DECISION_STATES = {"READY_FOR_ACCEPTANCE", "REPAIR_REQUIRED", "HUMAN_REQUIRED"}
+
     def advance(self, execution: str, runner=subprocess.run) -> dict:
-        """Advance approved native cards; never grant approval or accept delivery.
+        result = self._advance(execution, runner)
+        if result.get("state") in self.DECISION_STATES:
+            self.notify(execution)
+        return result
+
+    def notify(self, execution: str, opener=None) -> dict | None:
+        """Push one card per decision point; never blocks or fails the workflow."""
+        if not workflow_notify.configured(self.env):
+            return None
+        with self.locked(execution):
+            manifest = self.load(execution)
+            state, row = manifest.get("workflow_state"), manifest["rounds"][-1]
+            key = f"{row['number']}:{state}"
+            sent = manifest.setdefault("notifications", {})
+            if state not in self.DECISION_STATES or key in sent:
+                return None
+            sent[key] = {"status": "pending", "at": time.time()}
+            self.save(manifest)
+            decision = manifest.get("decision", {}) if manifest.get("decision", {}).get("round") == row["number"] else {}
+            event = {"execution_id": execution, "objective": manifest["objective"], "state": state,
+                     "round": row["number"], "reasons": decision.get("reasons", []),
+                     "recommendation": {"READY_FOR_ACCEPTANCE": "测试与审查已通过，建议确认交付；请核对下列需要你决定的改动。",
+                                        "REPAIR_REQUIRED": "按审查发现的阻断问题再修一轮。",
+                                        "HUMAN_REQUIRED": "有角色被阻塞或执行环境未就绪，需要你检查。"}[state]}
+        # Network call happens outside the execution lock.
+        status = workflow_notify.send(self.env, event, **({"opener": opener} if opener else {}))
+        with self.locked(execution):
+            manifest = self.load(execution)
+            manifest.setdefault("notifications", {})[key] = status
+            self.save(manifest)
+        return status
+
+    def _advance(self, execution: str, runner=subprocess.run) -> dict:
+        """Advance approved native cards; never grant approval.
 
         The native owner calls this at dispatch ticks. State, triage releases,
         snapshots and receipts are durable, so a replacement owner resumes here.
@@ -973,9 +1048,11 @@ class Workflow:
             manifest = self.load(execution)
             if not self.modern(manifest):
                 return response(manifest, "LEGACY_MANUAL")
+            if manifest.get("workflow_state") == "REJECTED":
+                return response(manifest, "REJECTED")
             if not manifest["approved_write"]:
                 return response(manifest, "WAITING_APPROVAL", "approval")
-            if manifest.get("workflow_state") in {"READY_FOR_ACCEPTANCE", "ACCEPTED", "REPAIR_REQUIRED"}:
+            if manifest.get("workflow_state") in {"READY_FOR_ACCEPTANCE", "ACCEPTED", "REPAIR_REQUIRED", "REJECTED"}:
                 return response(manifest, manifest["workflow_state"])
             self.budget(manifest, conn)
             row = manifest["rounds"][-1]
@@ -1046,7 +1123,18 @@ class Workflow:
                     state = "REPAIR_REQUIRED"
                 elif verdict == "PASS":
                     self.acceptance(manifest, conn)
-                    state = "READY_FOR_ACCEPTANCE"
+                    files = row["candidate_files"]
+                    changed = sorted(key for key in files.keys() | manifest["source_files"].keys()
+                                     if files.get(key) != manifest["source_files"].get(key))
+                    deleted = sorted(manifest["source_files"].keys() - files.keys())
+                    reasons = workflow_policy.decision_reasons(manifest.get("policy"), changed, deleted)
+                    manifest["decision"] = {"round": row["number"], "reasons": reasons, "at": time.time()}
+                    if reasons:
+                        state = "READY_FOR_ACCEPTANCE"
+                    else:
+                        # Inside the pre-authorized scope: same evidence checks, no human click.
+                        self.record_acceptance(manifest, conn, accepted_by="policy")
+                        state = "ACCEPTED"
                 else:
                     raise Rejected("Reviewer must return verdict PASS or FAIL")
             else:
@@ -1099,6 +1187,8 @@ class Workflow:
                 "fingerprint": digest(["customer-change", row["number"], reason.strip()]),
                 "at": time.time(), "requested_by": "customer"})
             self.new_round(manifest, conn, row["tasks"]["reviewer"])
+            workflow_policy.record_decision(self.root, self.board, "approved", execution=execution,
+                                            objective=manifest["objective"], text="要求修改：" + reason.strip())
             return manifest
 
     def repair(self, execution: str, kind: str, reason: str) -> dict:

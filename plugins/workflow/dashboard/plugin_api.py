@@ -363,7 +363,8 @@ def conversation_message(request: Request, conversation: str, body: Conversation
     workflow = bound_workflow(settings)
     try:
         row = conversations_module().load(workflow, conversation)
-        context = {"project": workflow.project.name}
+        context = {"project": workflow.project.name,
+                   "decisions": core_module().workflow_policy.read_decisions(workflow.root, workflow.board)}
         if row["execution_id"]:
             task = execution_details(row["execution_id"])
             context["task"] = task
@@ -479,6 +480,8 @@ def execution_details(execution: str):
     data.update(acceptance=state["acceptance"], budget=state["budget"], failures=state["failures"],
                 workflow_state=state.get("workflow_state"),
                 approval=manifest.get("approval"),
+                decision=manifest.get("decision"), rejection=manifest.get("rejection"),
+                accepted_by=state["acceptance"].get("accepted_by"),
                 readiness=workflow.readiness(execution) if settings.get("allow_actions") is True and needs_setup else None,
                 candidate_revision=row.get("candidate_revision"), candidate_digest=row.get("candidate_digest"),
                 changed_files=sorted(row.get("candidate_files", {}).keys() - manifest["source_files"].keys())
@@ -543,7 +546,7 @@ def submit(request: Request, body: Submission):
 
 @router.post("/executions/{execution}/actions/{action}")
 def run_action(request: Request, execution: str,
-               action: Literal["approve", "advance", "launch", "start", "prepare-review", "verify-builder", "verify-reviewer", "accept", "repair", "request-changes", "retry-worker"], body: Action):
+               action: Literal["approve", "advance", "launch", "start", "prepare-review", "verify-builder", "verify-reviewer", "accept", "repair", "request-changes", "retry-worker", "reject"], body: Action):
     settings = read_settings()
     manifest = load_manifest(settings, execution)
     try:
@@ -576,12 +579,15 @@ def run_action(request: Request, execution: str,
             workflow.request_changes(execution, body.reason, body.round_number)
             return {"execution_id": execution, "action": action, "completed": True,
                     "round_number": workflow.load(execution)["rounds"][-1]["number"]}
+        elif action == "reject":
+            workflow.reject(execution, body.reason)
+            return {"execution_id": execution, "action": action, "completed": True}
         elif action == "retry-worker":
             if body.role is None or body.run_id is None or body.round_number is None:
                 raise HTTPException(400, "请刷新并确认需要重试的角色。")
             return workflow.retry_worker(execution, body.role, body.round_number, body.run_id, body.reason)
         else:
-            workflow.accept(execution)
+            workflow.accept(execution, body.reason)
         return {"execution_id": execution, "action": action, "completed": True}
     except (ValueError, OSError, sqlite3.Error, subprocess.SubprocessError) as exc:
         raise HTTPException(409, str(exc)) from exc

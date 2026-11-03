@@ -246,3 +246,4 @@
   .wf-record-meta { padding: 0 18px 18px; }
 }
 .wf-findings{margin-top:16px}.wf-findings h4{font-size:12px;margin-bottom:6px}.wf-findings ul{list-style:none;padding:0;margin:0}.wf-findings li{padding:7px 0;border-bottom:1px solid var(--wf-line);font-size:11px;overflow-wrap:anywhere}.wf-findings code{color:var(--wf-muted);font-size:10px}
+.wf-decision{margin:12px 0;padding:12px 14px;border:1px solid #5d4d31;border-radius:8px;background:#2a2620}.wf-decision h4{font-size:12px;margin-bottom:6px;color:#e2bd79}.wf-decision ul{margin:0;padding-left:18px;font-size:11px;line-height:1.9}.wf-decision span{color:var(--wf-muted);overflow-wrap:anywhere}
