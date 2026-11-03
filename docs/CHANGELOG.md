@@ -1,0 +1,17 @@
+# 版本与状态记录
+
+以下内容原位于 README 顶部，按原文保留。
+
+> **v0.8.0 对话工作台**：直接与总控讨论需求，生成任务卡并批准执行；同页查看方案、开发、独立测试与独立审查的实时工作过程，查看代码改动、下载交付代码并确认验收。总控对话使用 Hermes 主模型，四个执行角色可分别配置厂商、Key 和模型；原生 Gateway 推进已授权任务，历史任务保留原流程。接入包仅包含功能代码、已构建界面和通用说明。
+
+> **网页应用**：使用 Hermes Dashboard 的「工作流」页，默认安装只读，操作员开放后可审批并执行任务。参见 [应用启动与安装说明](docs/WORKFLOW_APP.md) 和 [验证记录](docs/WORKFLOW_APP_TEST_RESULTS.txt)。实际费用硬上限等尚未实现的边界继续保留。
+
+> **Linux 中文本地版（已有 Hermes v0.22.5）**：[下载 v2 接入包](downloads/hermes-workflow-local-v2-zh-CN.tar.gz?raw=true) · [校验文件](downloads/hermes-workflow-local-v2-zh-CN.tar.gz.sha256) · [安装说明](docs/LOCAL_HERMES_V0225.md) · [按钮与按键说明](docs/WORKFLOW_APP_BUTTONS_ZH.md)。包内含已构建前端，无需本机 npm 构建。升级 operator 模块后需重启对应数据根的 Dashboard 和 Gateway。[早期界面截图](docs/images/workflow-desktop-zh.png)保留作历史参考。
+
+本地语言更新：页眉新增「中文 / English」按钮，默认中文并记住选择；补齐模型设置、配置、密钥、频道、系统、自动化模板及弹窗文案，工作流同步切换。源码补丁和验证范围见 [本地化说明](localization/README.md)。
+
+模型连接：工作流主界面同页配置四个 Agent，各自选择厂商和 Key，一次获取全部模型，再分别选择并统一保存；也可套用同一连接。默认 API 地址与协议自动填入，自定义设置在每行直接展开。模型目录和推理复用 Hermes 原生接口。不同厂商直连使用各自的 Key，聚合服务可用一把 Key 选择多家模型。旧 Packy/DeepSeek 固定路由不再作为本地默认配置。
+
+工作流验证：新版已通过总控真实对话、人工审批、隔离代码修改、Docker 测试、独立审查及界面验收。该次需求的 48 项项目测试与 9 项独立测试通过；首次审查的工作目录证据缺项已修复，原失败记录保留。原有 33 项与新增 6 项界面测试通过；完整范围及必要补跑记录见 [测试记录](docs/WORKFLOW_APP_TEST_RESULTS.txt)。实际使用需准备 Docker、角色凭据与有效验收命令。
+
+> **P0 改造状态：PARTIAL_PASS；P1/P2 尚未启用。** 新版 `submit-feature.sh deploy.env "目标"` 保留参数形式，默认只建 triage 卡。Builder 原始项目挂载改为只读；写入需经操作员授权，使用独立候选副本。Kanban `done` 不再被视为交付接受。开始使用前阅读 [P0 报告与操作说明](docs/MULTIAGENT_WORKFLOW_P0.md) 和 [持续工作记忆/差距矩阵](docs/MULTIAGENT_WORKFLOW_UPGRADE_MEMORY.md)。下文保留历史部署流程；本次没有执行部署或升级。
