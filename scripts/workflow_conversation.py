@@ -22,7 +22,9 @@ PROMPT = """你是 Hermes 工作台的总控 Agent。使用用户的语言与用
 只返回一个 JSON 对象：{"reply":"给用户的自然回复", "objective":null或"完整任务需求"}。
 需求明确、可以生成或更新任务卡时，objective 必须包含目标、范围及可执行的验收标准，
 不超过4000字符；有关键问题尚未澄清时 objective 为 null，并在 reply 中提问。
-查询进展不改变已有任务卡；代码修改建议仍需新的人工授权。"""
+查询进展不改变已有任务卡；代码修改建议仍需新的人工授权。
+工作台数据里的 decisions.approved 是用户已定的事，decisions.rejected 是用户定了不做的事。
+遇到已定的问题直接按记录处理，不再询问；新需求与「定了不做」冲突时，引用原话说明并请用户确认是否推翻。"""
 
 
 def directory(workflow, conversation: str) -> Path:

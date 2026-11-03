@@ -19,3 +19,5 @@ cd hermes-workflow-local
 界面和按钮：[中文操作说明](../docs/WORKFLOW_APP_BUTTONS_ZH.md)。
 
 包内无 deploy.env、模型凭据、Git 元数据或用户状态。逐文件哈希在包内 MANIFEST.sha256；统计共享选项仍由用户选择，不自动启用。
+
+> 这里的接入包构建于“授权范围自动验收、飞书决策卡、决策记录、审查严重度”之前，不含这些功能。需要时用 `scripts/install-workflow-app.py` 从源码安装，或用 `scripts/package-local-app.py` 重新打包。见 [自动化与决策](../docs/AUTOMATION_ZH.md)。

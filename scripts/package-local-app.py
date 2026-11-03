@@ -17,7 +17,7 @@ SOURCES = (
     "plugins/workflow/dashboard/app.js", "plugins/workflow/dashboard/app.css",
     "scripts/install-workflow-app.py", "scripts/workflow_control.py",
     "scripts/configure_profiles.py", "scripts/hermes_baseline.py",
-    "scripts/workflow_runtime.py",
+    "scripts/workflow_runtime.py", "scripts/workflow_policy.py", "scripts/workflow_notify.py",
     "scripts/workflow_models.py",
     "scripts/workflow_conversation.py", "scripts/workflow_activity.py",
     "souls/researcher.md", "souls/builder.md", "souls/tester.md", "souls/reviewer.md", "souls/orchestrator.md",
