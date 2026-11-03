@@ -825,3 +825,140 @@ test("a Feishu card link opens the linked execution", async () => {
   await view.render();
   assert.equal(view.container.querySelector(".wf-title-line h2").textContent, view.server.records[1].objective);
 });
+
+test("next step explains rejected and paused tasks instead of showing only a title", async () => {
+  const record = developmentExecution(["done", "done", "done", "triage"]); enableController();
+  Object.assign(record, { approved_write: true, workflow_state: "REJECTED", rejection: { reason: "不引入新依赖", at: 1700000000 } });
+  await view.render();
+  const card = view.container.querySelector(".wf-next-step");
+  assert.equal(card.querySelector("h3").textContent, "已决定不做");
+  assert.equal(card.querySelector("blockquote").textContent, "不引入新依赖");
+  assert.ok(card.querySelector("small").textContent.startsWith("决定于"));
+  assert.ok(card.classList.contains("wf-tone-grey"));
+  assert.equal(card.querySelectorAll("button").length, 0);
+  record.workflow_state = "HUMAN_REQUIRED"; delete record.rejection;
+  await view.poll();
+  assert.equal(card.querySelector("h3").textContent, "需要处理");
+  assert.equal(card.querySelector("p").textContent, "任务暂停等待你检查，确认无误后继续执行。");
+  assert.ok(view.button("继续执行", ".wf-next-step button"));
+  assert.ok(view.button("不做了", ".wf-next-step button").classList.contains("wf-danger"));
+});
+
+test("blocked and interrupted roles are named in the next step", async () => {
+  const record = developmentExecution(["done", "blocked", "running", "triage"]); enableController();
+  Object.assign(record, { approved_write: true, workflow_state: "HUMAN_REQUIRED" });
+  await view.render();
+  assert.equal(view.container.querySelector(".wf-next-step p").textContent, "开发被阻塞，请在「工作过程」查看原因。");
+  await view.click(view.button("查看阻塞阶段", ".wf-next-step button"));
+  assert.ok(view.container.querySelector(".wf-node-builder").classList.contains("focused"));
+  Object.assign(record.rounds[0].tasks.builder, { outcome: "timed_out", run_id: 7 });
+  await view.render("en");
+  await view.poll();
+  assert.equal(view.container.querySelector(".wf-next-step p").textContent, "Build stopped (Timed out). You can retry and keep the failed run.");
+});
+
+test("repair guidance counts blockers and stops offering repair when the round budget is used", async () => {
+  const record = developmentExecution(["done", "done", "done", "done"]); enableController();
+  Object.assign(record, { approved_write: true, workflow_state: "REPAIR_REQUIRED" });
+  record.rounds[0].tasks.reviewer.findings = [{ severity: "blocker", summary: "a" }, { severity: "blocker", summary: "b" }, { severity: "minor", summary: "c" }];
+  await view.render();
+  const card = view.container.querySelector(".wf-next-step");
+  assert.equal(card.querySelector("p").textContent, "独立审查发现 2 个阻断问题，填写修改意见后开始第 2 轮（共 3 轮）。");
+  assert.ok(view.button("批准修复", ".wf-next-step button"));
+  record.rounds.push(structuredClone(record.rounds[0]), structuredClone(record.rounds[0]));
+  record.rounds[1].number = 1; record.rounds[2].number = 2;
+  await view.poll();
+  assert.equal(card.querySelector("h3").textContent, "整改轮次已用完");
+  assert.equal(view.button("批准修复", ".wf-next-step button"), undefined);
+  assert.ok(view.button("不做了", ".wf-next-step button"));
+  record.rounds = record.rounds.slice(0, 1);
+  record.rounds[0].tasks.reviewer.findings = [];
+  await view.poll();
+  assert.equal(card.querySelector("p").textContent, "平台测试未通过，填写修改意见后开始第 2 轮（共 3 轮）。");
+});
+
+test("tasks that need the user are listed first, counted and coloured consistently", async () => {
+  enableController();
+  const running = developmentExecution(["done", "running", "running", "triage"]);
+  Object.assign(running, { execution_id: secondId, objective: "运行中的任务", approved_write: true, workflow_state: "RUNNING_BUILD_AND_TEST" });
+  const waiting = developmentExecution(["done", "done", "done", "done"]);
+  Object.assign(waiting, { objective: "等你验收的任务", approved_write: true, workflow_state: "READY_FOR_ACCEPTANCE" });
+  waiting.acceptance.status = "READY_FOR_ACCEPTANCE";
+  view.server.records = [running, waiting];
+  await view.render();
+  const items = [...view.container.querySelectorAll(".wf-executions .wf-execution")];
+  assert.deepEqual(items.map(item => item.querySelector("h3").textContent), ["等你验收的任务", "运行中的任务"]);
+  assert.ok(items[0].classList.contains("selected"), "the first task needing a decision opens by default");
+  assert.ok(items[0].querySelector(".wf-badge").classList.contains("wf-amber"));
+  assert.ok(items[1].querySelector(".wf-badge").classList.contains("wf-blue"));
+  assert.equal(view.container.querySelector(".wf-executions .wf-section-heading .wf-badge").textContent, "1 项待你处理");
+  assert.ok(view.container.querySelector(".wf-title-line .wf-badge").classList.contains("wf-amber"));
+});
+
+test("search ignores surrounding spaces for both tasks and drafts", async () => {
+  enableController();
+  view.server.conversations = [{ id: "e".repeat(32), title: "登录草案", execution_id: "" }];
+  await view.render();
+  const search = view.container.querySelector(".wf-search");
+  const type = value => React.act(async () => {
+    Object.getOwnPropertyDescriptor(view.dom.window.HTMLInputElement.prototype, "value").set.call(search, value);
+    search.dispatchEvent(new view.dom.window.Event("input", { bubbles: true }));
+  });
+  await type("  登录  ");
+  assert.deepEqual([...view.container.querySelectorAll(".wf-execution h3")].map(item => item.textContent), ["登录草案"]);
+  await type(" 目标一 ");
+  assert.deepEqual([...view.container.querySelectorAll(".wf-execution h3")].map(item => item.textContent), ["目标一 / Objective one"]);
+});
+
+test("build and independent testing render as one parallel column", async () => {
+  developmentExecution(["done", "running", "running", "triage"]); enableController();
+  await view.render();
+  const columns = [...view.container.querySelector(".wf-dag").children];
+  assert.deepEqual(columns.map(item => item.className.split(" ")[0]), ["wf-node", "wf-dag-parallel", "wf-node"]);
+  assert.deepEqual([...columns[1].querySelectorAll("strong")].map(item => item.textContent), ["开发", "独立测试"]);
+});
+
+test("code changes load once and toggle, and downloads keep the blob URL alive past the click", async () => {
+  const record = developmentExecution(["done", "done", "done", "done"]); enableController();
+  Object.assign(record, { approved_write: true, workflow_state: "READY_FOR_ACCEPTANCE", changed_files: ["app.py", "test_app.py"] });
+  record.acceptance.status = "READY_FOR_ACCEPTANCE";
+  let reads = 0;
+  view.overrides.set(`/executions/${firstId}/delivery`, () => { reads += 1; return { changed_files: ["app.py"], patch: "+fix" }; });
+  await view.render();
+  const toggle = view.button("查看代码改动（2 个文件）");
+  await view.click(toggle);
+  assert.ok(view.container.querySelector(".wf-diff pre").textContent.includes("+fix"));
+  assert.equal(toggle.textContent, "收起代码改动");
+  await view.click(toggle);
+  assert.equal(view.container.querySelector(".wf-diff"), null);
+  await view.click(toggle);
+  assert.equal(reads, 1);
+
+  const revoked = [], delayed = [], clicked = [];
+  const { createObjectURL, revokeObjectURL } = URL, { setTimeout: realTimeout } = global, click = view.dom.window.HTMLAnchorElement.prototype.click;
+  Object.assign(URL, { createObjectURL: () => "blob:synthetic", revokeObjectURL: url => revoked.push(url) });
+  global.setTimeout = (callback, delay) => { delayed.push(delay); callback(); };
+  view.dom.window.HTMLAnchorElement.prototype.click = function () { clicked.push(this.isConnected && this.download); };
+  view.dom.window.__HERMES_PLUGIN_SDK__.authedFetch = async () => ({ ok: true, blob: async () => new Blob(["x"]) });
+  try { await view.click(view.button("下载交付代码")); }
+  finally { Object.assign(URL, { createObjectURL, revokeObjectURL }); global.setTimeout = realTimeout; view.dom.window.HTMLAnchorElement.prototype.click = click; }
+  assert.deepEqual(clicked, ["delivery-aaaaaaaa.tar.gz"]);
+  assert.deepEqual(delayed, [60000]);
+  assert.deepEqual(revoked, ["blob:synthetic"]);
+  assert.equal(view.container.ownerDocument.querySelector("a[download]"), null);
+});
+
+test("the won't-do dialog is visibly destructive and the chat can be collapsed", async () => {
+  developmentExecution(); enableController();
+  await view.render();
+  await view.click(view.button("不做了", ".wf-next-step button"));
+  assert.ok(view.container.querySelector(".wf-modal").classList.contains("wf-modal-danger"));
+  const submit = view.container.querySelector('.wf-modal button[type="submit"]');
+  assert.equal(submit.textContent, "确认不做");
+  assert.ok(submit.classList.contains("wf-danger-solid"));
+  await view.click(view.button("取消", ".wf-modal button"));
+  const chat = view.container.querySelector(".wf-controller");
+  await view.click(view.button("收起对话", ".wf-controller button"));
+  assert.ok(chat.classList.contains("wf-collapsed"));
+  assert.equal(view.button("展开对话", ".wf-controller button").getAttribute("aria-expanded"), "false");
+});
