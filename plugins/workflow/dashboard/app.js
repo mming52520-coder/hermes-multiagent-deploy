@@ -25,6 +25,10 @@
     "查看代码改动": "View code changes",
     "下载交付代码": "Download source",
     "确认验收": "Accept delivery",
+    "审查问题": "Review findings",
+    "阻断问题": "Blocker",
+    "次要问题": "Minor",
+    "只有阻断问题会要求修改；次要问题记录在案，不打回。": "Only blockers require changes; minor findings are recorded without sending the work back.",
     "批准修复": "Approve repair",
     "提出修改": "Request changes",
     "批准修改并执行": "Approve and run changes",
@@ -758,7 +762,22 @@
       task?.verification && h("details", { className: "wf-task-verification" }, h("summary", null, ui("测试记录")),
         h("pre", null, typeof task.verification === "string" ? task.verification : JSON.stringify(task.verification, null, 2))),
       !!task?.skills_used?.length && h("div", { className: "wf-skills-used" }, h("h4", null, ui("使用的技能")),
-        h("ul", null, task.skills_used.map(name => h("li", { key: name }, name)))));
+        h("ul", null, task.skills_used.map(name => h("li", { key: name }, name)))),
+      role === "reviewer" && h(ReviewFindings, { findings: task?.findings }));
+  }
+
+  const SEVERITY = { blocker: ["阻断问题", "amber"], minor: ["次要问题", "neutral"] };
+  function ReviewFindings({ findings }) {
+    const ui = useText();
+    const graded = Array.isArray(findings) ? findings.filter(item => item && SEVERITY[item.severity]) : [];
+    if (!graded.length) return null;
+    const ordered = [...graded].sort((a, b) => (a.severity === "blocker" ? 0 : 1) - (b.severity === "blocker" ? 0 : 1));
+    return h("div", { className: "wf-findings" }, h("h4", null, ui("审查问题")),
+      h("p", { className: "wf-muted" }, ui("只有阻断问题会要求修改；次要问题记录在案，不打回。")),
+      h("ul", null, ordered.map((item, index) => h("li", { key: index, className: "wf-finding-" + item.severity },
+        h(Badge, { tone: SEVERITY[item.severity][1] }, ui(SEVERITY[item.severity][0])), " ",
+        h("span", null, String(item.summary || "")),
+        item.file && h("code", null, " " + String(item.file))))));
   }
 
   function customerStatus(row) {

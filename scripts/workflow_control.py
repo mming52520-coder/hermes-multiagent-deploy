@@ -38,6 +38,33 @@ class Rejected(ValueError):
     pass
 
 
+SEVERITIES = {"blocker", "minor"}
+
+
+def review_verdict(metadata: dict) -> str | None:
+    """Derive the effective Reviewer verdict from graded findings.
+
+    Graded findings are objects with ``severity`` blocker/minor. Any blocker
+    means FAIL and only blockers can cause FAIL, so minor or style notes cannot
+    trigger another repair round. Ungraded (legacy) findings keep the reported
+    verdict unchanged.
+    """
+    findings = metadata.get("findings")
+    graded = [item for item in findings if isinstance(item, dict) and item.get("severity") in SEVERITIES] \
+        if isinstance(findings, list) else []
+    if not graded:
+        return metadata.get("verdict")
+    return "FAIL" if any(item["severity"] == "blocker" for item in graded) else "PASS"
+
+
+def blocker_findings(metadata: dict) -> list:
+    findings = metadata.get("findings")
+    if not isinstance(findings, list):
+        return findings
+    graded = [item for item in findings if isinstance(item, dict) and item.get("severity") in SEVERITIES]
+    return [item for item in graded if item["severity"] == "blocker"] if graded else findings
+
+
 def git(path: Path, *args: str) -> str:
     # An edited .git/config must not execute an fsmonitor or an external diff.
     return subprocess.check_output(
@@ -298,7 +325,8 @@ class Workflow:
                         "Review /handoff/platform verification and the independent tests, inspect the frozen code, "
                         "including the exact executed files at /handoff/platform/independent-tests. "
                         "Run only additional focused probes needed for concrete gaps. Reuse the complete platform test receipt. "
-                        "Return verdict PASS or FAIL, with findings and verification.\n"
+                        "Grade each finding severity blocker or minor; style suggestions are not findings. "
+                        "Return verdict FAIL only for blocker findings, otherwise PASS, with findings and verification.\n"
                     )
             parents = [previous] if previous else []
             if self.modern(manifest):
@@ -458,6 +486,9 @@ class Workflow:
             return raw
         metadata = dict(raw)
         metadata["verification"] = raw.get("verification", raw.get("commands_run", []))
+        if role == "reviewer":
+            metadata["reported_verdict"] = raw.get("verdict")
+            metadata["verdict"] = review_verdict(raw)
         metadata.update({"schema_version": 2, "execution_id": manifest["execution_id"],
                          "task_id": row["tasks"][role], "run_id": self.kb.latest_run(conn, row["tasks"][role]).id,
                          "source_revision": manifest["source_revision"],
@@ -792,7 +823,7 @@ class Workflow:
             raise Rejected("no real code-change evidence")
         metadata = {role:self.result_metadata(manifest, row, role, conn) for role in row["tasks"]}
         if self.modern(manifest):
-            if metadata["reviewer"].get("verdict") != "PASS":
+            if review_verdict(metadata["reviewer"]) != "PASS":
                 raise Rejected("Reviewer did not return PASS")
             directory = self.path(manifest["execution_id"]) / f"round-{row['number']}"
             receipt_file, log = directory / "platform-verification.json", directory / "platform-verification.log"
@@ -887,7 +918,7 @@ class Workflow:
                 raise Rejected("Reviewer run changed; review the latest result before retrying")
             else:
                 metadata = self.completed_metadata(conn, row["tasks"]["reviewer"])
-                if metadata.get("verdict") != "FAIL":
+                if review_verdict(metadata) != "FAIL":
                     raise Rejected("review retry requires a completed Reviewer FAIL")
                 self.budget(manifest, conn, new_work=True)
                 already_retried = False
@@ -1010,9 +1041,10 @@ class Workflow:
             if reviewer.status in {"done", "archived"} and review_run and review_run.outcome == "completed":
                 metadata = self.completed_metadata(conn, reviewer.id)
                 self.publish_handoff(manifest, row, "reviewer", conn)
-                if metadata.get("verdict") == "FAIL":
+                verdict = review_verdict(metadata)
+                if verdict == "FAIL":
                     state = "REPAIR_REQUIRED"
-                elif metadata.get("verdict") == "PASS":
+                elif verdict == "PASS":
                     self.acceptance(manifest, conn)
                     state = "READY_FOR_ACCEPTANCE"
                 else:
@@ -1093,8 +1125,11 @@ class Workflow:
                 parent = row["tasks"]["builder"]
             else:
                 review = self.completed_metadata(conn, parent)
-                if review.get("verdict") != "FAIL":
+                if (review_verdict(review) if self.modern(manifest) else review.get("verdict")) != "FAIL":
                     raise Rejected("repair requires a completed Reviewer FAIL")
+                if self.modern(manifest):
+                    # Minor notes may change between rounds; repeated blockers may not.
+                    review = {**review, "findings": blocker_findings(review)}
             # Changing the repair request prose must not hide the same review.
             fingerprint = digest([kind,review.get("findings")])
             if fingerprint in [item["fingerprint"] for item in manifest["failures"]]:

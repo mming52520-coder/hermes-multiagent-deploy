@@ -328,6 +328,50 @@ class WorkflowV2Test(unittest.TestCase):
         with self.assertRaisesRegex(wc.Rejected,"stale"):
             self.workflow.accept(self.execution)
 
+    def test_minor_findings_do_not_fail_review(self):
+        self.research()
+        self.deliver()
+        self.assertEqual(self.advance()["state"], "RUNNING_REVIEW")
+        self.completed("reviewer", {"verdict": "FAIL", "findings": [
+            {"severity": "minor", "summary": "error message could name the file", "file": "LICENSE"}]})
+        self.assertEqual(self.advance()["state"], "READY_FOR_ACCEPTANCE")
+        handoff = json.loads((self.workflow.handoff_path(self.execution, 0) / "reviewer" / "result.json").read_text())
+        self.assertEqual((handoff["verdict"], handoff["reported_verdict"]), ("PASS", "FAIL"))
+        self.assertEqual(self.workflow.accept(self.execution)["status"], "ACCEPTED")
+
+    def test_blocker_finding_fails_review_even_if_reported_pass(self):
+        self.research()
+        self.deliver()
+        self.advance()
+        self.completed("reviewer", {"verdict": "PASS", "findings": [
+            {"severity": "blocker", "summary": "acceptance scenario 2 crashes", "file": "LICENSE"},
+            {"severity": "minor", "summary": "naming"}]})
+        self.assertEqual(self.advance()["state"], "REPAIR_REQUIRED")
+        with self.assertRaisesRegex(wc.Rejected, "Reviewer did not return PASS"):
+            self.workflow.accept(self.execution)
+
+    def test_repeated_blocker_is_detected_even_when_minor_notes_change(self):
+        blocker = {"severity": "blocker", "summary": "acceptance scenario 2 crashes", "file": "LICENSE"}
+        self.research()
+        self.deliver()
+        self.advance()
+        self.completed("reviewer", {"verdict": "FAIL", "findings": [blocker, {"severity": "minor", "summary": "a"}]})
+        self.assertEqual(self.advance()["state"], "REPAIR_REQUIRED")
+        self.workflow.repair(self.execution, "implementation", "fix scenario 2")
+        self.workflow.approve(self.execution)
+        self.advance()
+        self.deliver(1)
+        self.assertEqual(self.advance()["state"], "RUNNING_REVIEW")
+        self.completed("reviewer", {"verdict": "FAIL", "findings": [blocker, {"severity": "minor", "summary": "b"}]})
+        self.assertEqual(self.advance()["state"], "REPAIR_REQUIRED")
+        with self.assertRaisesRegex(wc.Rejected, "REPEATED_FAILURE"):
+            self.workflow.repair(self.execution, "implementation", "reworded request")
+
+    def test_ungraded_findings_keep_reported_verdict(self):
+        self.assertEqual(wc.review_verdict({"verdict": "FAIL", "findings": ["legacy text"]}), "FAIL")
+        self.assertEqual(wc.review_verdict({"verdict": "PASS", "findings": []}), "PASS")
+        self.assertIsNone(wc.review_verdict({"findings": [{"severity": "nit"}]}))
+
 
 if __name__ == "__main__":
     unittest.main()

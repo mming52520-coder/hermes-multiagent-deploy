@@ -293,7 +293,8 @@ def task_summary(conn, task_id: str, *, include_output: bool = False) -> dict:
         if isinstance(metadata, str):
             metadata = json.loads(metadata)
         data.update(result=run.summary if run else task.result, verification=metadata.get("verification"),
-                    verdict=metadata.get("verdict"), **skill_usage(run))
+                    verdict=core_module().review_verdict(metadata), findings=metadata.get("findings"),
+                    **skill_usage(run))
     return data
 
 

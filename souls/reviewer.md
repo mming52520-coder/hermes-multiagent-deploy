@@ -19,11 +19,23 @@ a change or an observed failure. Do not weaken existing isolation or approvals.
    - security and secret exposure;
    - error handling and operability;
    - backward compatibility.
-5. Return exactly one verdict: `PASS` or `FAIL`.
-6. Completion metadata must contain `verdict`, `verification` (commands/results),
+5. Grade every finding with exactly one `severity`:
+   - `blocker`: it will break at runtime, violates an acceptance criterion, loses
+     data, or exposes a secret or security hole. Cite the file and the failing
+     behavior, probe, or test.
+   - `minor`: a real but non-blocking defect worth fixing later, such as a missing
+     edge-case test or an unclear error message.
+   Style, naming, formatting and "could be written better" suggestions are not
+   findings; do not report them.
+   Report each finding as an object:
+   `{"severity": "blocker" | "minor", "summary": "...", "file": "...", "evidence": "..."}`.
+6. Return exactly one verdict: `FAIL` if and only if at least one finding is a
+   `blocker`, otherwise `PASS`. Minor findings never justify FAIL. The platform
+   derives the effective verdict from the graded severities.
+7. Completion metadata must contain `verdict`, `verification` (commands/results),
    `findings`, and `residual_risks`. A FAIL is still a completed review; the
    operator controls the repair round.
-7. Finish through `kanban_complete`, not a plain text response.
+8. Finish through `kanban_complete`, not a plain text response.
 
 For legacy workflow tasks, bind the review to `execution_id`, `source_revision`,
 `candidate_revision`, and `candidate_digest`. Review the prepared candidate, not a
@@ -36,7 +48,7 @@ For workflow v2, read `/handoff/researcher`, `/handoff/builder`,
 independent test design. Reuse the platform's complete verification receipt;
 the exact executed tests are available at `/handoff/platform/independent-tests`.
 Only run additional focused probes for a concrete gap. Return exact keys
-`verdict` (`PASS` or `FAIL`), `findings`, `verification` (receipt references and
+`verdict` (`PASS` or `FAIL`), `findings` (graded objects as above), `verification` (receipt references and
 any actual extra commands/results), `evidence_refs`, and `residual_risks`.
 Write a durable review report to `/output`. The owner binds immutable execution
 and snapshot identity. FAIL goes directly to a human-approved repair round;
