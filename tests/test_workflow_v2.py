@@ -98,6 +98,39 @@ class WorkflowV2Test(unittest.TestCase):
         self.assertTrue(handoff.is_symlink())
         self.assertEqual(self.readiness.call_count,1)
 
+    def test_customer_revision_preserves_pass_and_requires_a_new_grant(self):
+        self.ready()
+        previous = self.row()["tasks"]["reviewer"]
+        self.workflow.request_changes(self.execution, "Adjust the fixture output", 0)
+        manifest = self.workflow.load(self.execution)
+        self.assertEqual(len(manifest["rounds"]), 2)
+        self.assertFalse(manifest["approved_write"])
+        self.assertEqual(manifest["workflow_state"], "WAITING_APPROVAL")
+        self.assertEqual(manifest["failures"][-1]["requested_by"], "customer")
+        with fixtures.connect_closing(board="default") as conn:
+            self.assertEqual(self.workflow.completed_metadata(conn, previous)["verdict"], "PASS")
+        self.assertFalse((self.workflow.path(self.execution) / "acceptance.json").exists())
+
+    def test_operator_retry_preserves_failed_run_and_uses_native_unblock(self):
+        self.workflow.approve(self.execution)
+        self.advance()
+        task_id = self.row()["tasks"]["researcher"]
+        with fixtures.connect_closing(board="default") as conn:
+            fixtures.kb.recompute_ready(conn)
+            fixtures.kb.claim_task(conn, task_id)
+            run = fixtures.kb.latest_run(conn, task_id)
+            conn.execute("UPDATE task_runs SET status='blocked', outcome='crashed', ended_at=? WHERE id=?", (time.time(), run.id))
+            conn.execute("UPDATE tasks SET status='blocked', claim_lock=NULL, claim_expires=NULL WHERE id=?", (task_id,))
+            conn.commit()
+        with self.assertRaisesRegex(wc.Rejected, "角色状态已经变化"):
+            self.workflow.retry_worker(self.execution, "researcher", 0, run.id + 1, "resolved fixture")
+        result = self.workflow.retry_worker(self.execution, "researcher", 0, run.id, "environment corrected; reuse output")
+        self.assertEqual(result["state"], "RUNNING_RESEARCH")
+        with fixtures.connect_closing(board="default") as conn:
+            self.assertEqual(fixtures.kb.latest_run(conn, task_id).outcome, "crashed")
+            self.assertEqual(fixtures.kb.get_task(conn, task_id).status, "ready")
+            self.assertTrue(conn.execute("SELECT 1 FROM task_events WHERE task_id=? AND kind='unblocked'", (task_id,)).fetchone())
+
     def test_initial_readiness_failure_releases_no_cards_and_can_resume(self):
         self.workflow.approve(self.execution)
         self.readiness.return_value = {"ready":False,"checks":[{"code":"docker","ready":False}]}
@@ -154,6 +187,9 @@ class WorkflowV2Test(unittest.TestCase):
         self.advance()
         directory = self.workflow.path(self.execution) / "round-0"
         receipt = json.loads((directory / "platform-verification.json").read_text())
+        self.assertEqual(receipt["environment"]["cwd"], "/tmp/candidate")
+        invocation = next(command for command in self.calls if "run" in command)
+        self.assertIn('cd /tmp/candidate && printf "Verification cwd: " && pwd -P', invocation[-3])
         command = shlex.split(receipt["command"].split(" && ", 1)[1])
         command[0] = fixtures.sys.executable
         command[-1] = command[-1].replace("/independent-tests", str(directory / "independent-tests"))
