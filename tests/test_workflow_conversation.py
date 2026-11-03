@@ -202,5 +202,63 @@ class ConversationTest(unittest.TestCase):
             self.assertEqual(archive.extractfile(self.workflow.project.name + "/new-file.txt").read(), b"synthetic delivered feature\n")
 
 
+    def test_old_conversations_are_readonly_and_architect_creation_is_stable(self):
+        row = self.create()
+        stored = self.controller.load(self.workflow, row["id"])
+        stored.pop("kind")
+        self.controller.save(self.workflow, stored)
+        response = self.client.post(f"{self.url}/conversations/{row['id']}/messages", json={"message": "继续"})
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(self.client.get(f"{self.url}/conversations/{row['id']}").status_code, 200)
+        first = self.controller.architect(self.workflow)
+        self.assertEqual(first["id"], self.controller.architect(self.workflow)["id"])
+        self.assertEqual(first["execution_ids"], [])
+
+    def test_highlight_only_refers_to_a_current_card_and_never_approves_work(self):
+        row = self.controller.architect(self.workflow)
+        selected = {"id": "not-current"}
+        class Agent:
+            session_id = row["id"]
+            def run_conversation(self, *args, **kwargs):
+                return {"final_response": json.dumps({"reply": "请在卡片里确认。", "objective": None, "card_id": selected["id"]})}
+            def close(self): pass
+        with patch.object(self.controller, "make_agent", return_value=Agent()), patch.object(fixtures.runtime, "dispatch") as dispatch:
+            self.controller.start(self.workflow, row["id"], "可以", {"cards": [{"card_id": "current-card"}]})
+            self.assertNotIn("highlight", self.wait(row["id"]))
+            selected["id"] = "current-card"
+            self.controller.start(self.workflow, row["id"], "你推荐哪个？", {"cards": [{"card_id": "current-card"}]})
+            self.assertEqual(self.wait(row["id"])["highlight"]["card_id"], "current-card")
+            dispatch.assert_not_called()
+
+    def test_another_process_owns_a_durable_pending_reply_and_restart_is_detected(self):
+        import subprocess
+        import sys
+        row = self.controller.architect(self.workflow)
+        directory = self.controller.directory(self.workflow, row["id"])
+        child = subprocess.Popen([sys.executable, "-c",
+            "import fcntl,sys; f=open(sys.argv[1],'a'); fcntl.flock(f,fcntl.LOCK_EX); print('ready',flush=True); sys.stdin.read(1)",
+            str(directory / "conversation.lock")], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(child.stdout.readline().strip(), "ready")
+            row["status"] = "running"; self.controller.save(self.workflow, row)
+            (directory / "pending.json").write_text(json.dumps({"input": "synthetic question", "text": "partial reply",
+                "started_at": time.time(), "pid": child.pid}))
+            visible = self.controller.view(self.workflow, row["id"])
+            self.assertEqual(visible["status"], "running")
+            self.assertEqual(visible["pending"]["text"], "partial reply")
+        finally:
+            child.communicate("x", timeout=5)
+        self.assertEqual(self.controller.view(self.workflow, row["id"])["status"], "interrupted")
+        class Agent:
+            session_id = row["id"]
+            def run_conversation(self, *args, **kwargs):
+                return {"final_response": '{"reply":"recovered","objective":null}'}
+            def close(self): pass
+        with patch.object(self.controller, "make_agent", return_value=Agent()):
+            self.controller.start(self.workflow, row["id"], "retry", {})
+            self.assertEqual(self.wait(row["id"])["status"], "idle")
+        self.assertFalse((directory / "pending.json").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

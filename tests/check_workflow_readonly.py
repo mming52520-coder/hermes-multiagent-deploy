@@ -36,8 +36,9 @@ def main() -> None:
         for name in ("HERMES_KANBAN_DB", "HERMES_KANBAN_HOME", "HERMES_PROFILE"):
             os.environ.pop(name, None)
         os.environ.update(HERMES_HOME=str(home), HERMES_KANBAN_BOARD="default", HERMES_DESKTOP="0")
-        # Dashboard's native enable helper writes only this private configuration.
-        (home / "config.yaml").write_text("{}\n", encoding="utf-8")
+        # An enabled fixture exercises discovery/auth without publishing a new
+        # dependency environment. Fresh-install PM admission is a separate check.
+        (home / "config.yaml").write_text("plugins:\n  enabled: [workflow]\n", encoding="utf-8")
         project = directory / "project"
         project.mkdir()
         env_file = directory / "app.env"
@@ -48,7 +49,8 @@ def main() -> None:
         installer.install(home, env_file)
 
         from hermes_cli.plugins_cmd import dashboard_set_agent_plugin_enabled
-        dashboard_set_agent_plugin_enabled("workflow", enabled=True)
+        enabled = dashboard_set_agent_plugin_enabled("workflow", enabled=True)
+        assert enabled["ok"] is True and enabled["unchanged"] is True, enabled
         from hermes_cli.plugins import get_plugin_manager
         manager = get_plugin_manager()
         manager.discover_and_load()

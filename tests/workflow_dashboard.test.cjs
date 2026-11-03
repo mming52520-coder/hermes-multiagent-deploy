@@ -50,7 +50,8 @@ beforeEach(async () => {
       const route = url.replace("/api/plugins/workflow", "");
       requests.push({ route, init });
       if (overrides.has(route)) return overrides.get(route)(init);
-      if (route === "/meta") return { actions_enabled: server.actions_enabled, project_name: "synthetic-project", board: "default", readiness: server.readiness, model_connections_supported: server.model_connections_supported, conversation_supported: server.conversation_supported };
+      if (route === "/meta") return { actions_enabled: server.actions_enabled, project_name: "synthetic-project", board: "default", readiness: server.readiness, model_connections_supported: server.model_connections_supported, conversation_supported: server.conversation_supported, architect_supported: server.architect_supported };
+      if (route === "/architect") return structuredClone(server.architect);
       if (route === "/conversations") return { conversations: server.conversations || [] };
       if (route.startsWith("/conversations/")) return structuredClone(server.conversation);
       if (route.endsWith("/activity")) return structuredClone(server.activity || { events: [], roles: {}, workflow_state: "WAITING_APPROVAL" });
@@ -961,4 +962,197 @@ test("the won't-do dialog is visibly destructive and the chat can be collapsed",
   await view.click(view.button("收起对话", ".wf-controller button"));
   assert.ok(chat.classList.contains("wf-collapsed"));
   assert.equal(view.button("展开对话", ".wf-controller button").getAttribute("aria-expanded"), "false");
+});
+
+function enableArchitect() {
+  view.server.actions_enabled = true;
+  view.server.architect_supported = true;
+  view.server.conversation_supported = true;
+  const card = {
+    type: "card", card_id: "1".repeat(16), execution_id: firstId, round: 0, state: "READY_FOR_ACCEPTANCE",
+    objective: "导出 CSV 并保护公式内容", source_revision: "c".repeat(40), title: "等待确认交付",
+    text: "测试与审查已通过，请确认交付范围。", advice: { text: "建议保留公式转义保护。", source: "model" },
+    reasons: [{ category: "新增或升级依赖", paths: ["package.json"] }], blockers: [],
+    actions: ["accept", "request-changes", "reject"], at: 102, resolved: null,
+  };
+  view.server.architect = {
+    conversation: { id: "d".repeat(32), status: "idle", objective: "", pending: null },
+    items: [
+      { type: "message", id: 1, role: "user", content: "导出结果给我", at: 100, channel: "feishu", name: "同事甲" },
+      { type: "progress", id: "progress-1", execution_id: firstId, objective: "导出结果给我", label: "平台测试通过，开始独立审查", text: "「导出结果给我」平台测试通过，开始独立审查", at: 101 }, card,
+    ], pending: 1, legacy: [],
+  };
+  return card;
+}
+
+test("architect timeline renders messages, system progress and advice in their original order", async () => {
+  enableArchitect();
+  await view.render();
+  const timeline = view.container.querySelector(".wf-architect-timeline");
+  assert.match(timeline.children[0].textContent, /飞书 · 同事甲/);
+  assert.match(timeline.children[1].textContent, /系统进展/);
+  assert.match(timeline.children[2].textContent, /架构师建议/);
+  assert.match(timeline.children[2].textContent, /package.json/);
+  assert.equal(view.container.querySelectorAll(".wf-chat-composer").length, 1);
+  assert.equal(view.button("新建任务"), undefined);
+  assert.equal(view.container.querySelector(".wf-task-drawer"), null);
+});
+
+test("an architect decision still needs its explicit modal and sends only the card capability", async () => {
+  const card = enableArchitect();
+  await view.render();
+  await view.click(view.button("确认验收", ".wf-architect-card button"));
+  assert.ok(view.container.querySelector('[role="dialog"]').textContent.includes(card.objective));
+  assert.ok(view.container.querySelector('[role="dialog"]').textContent.includes("第 1 轮"));
+  assert.equal(view.requests.filter(({ route }) => route === "/architect/decisions").length, 0);
+  view.overrides.set("/architect/decisions", init => {
+    assert.deepEqual(JSON.parse(init.body), { card_id: card.card_id, action: "accept", reason: "" });
+    assert.equal(init.headers["X-Hermes-Workflow-Action"], "1");
+    card.resolved = { action: "accept", by: "web", name: "你", at: 110 }; card.actions = [];
+    view.server.architect.pending = 0;
+    return { completed: true };
+  });
+  await view.click(view.container.querySelector('.wf-modal button[type="submit"]'));
+  assert.equal(view.container.querySelector('[role="dialog"]'), null);
+  assert.match(view.container.querySelector(".wf-resolved").textContent, /已由/);
+});
+
+test("an expired architect card reports the conflict and refreshes without replaying a decision", async () => {
+  const card = enableArchitect();
+  await view.render();
+  await view.click(view.button("确认验收", ".wf-architect-card button"));
+  view.overrides.set("/architect/decisions", () => { card.resolved = { action: "accept", by: "feishu:synthetic", name: "同事乙", at: 110 };
+    throw new Error('409: {"detail":"卡片已过期，请刷新。"}'); });
+  const reads = view.requests.filter(({ route }) => route === "/architect").length;
+  await view.click(view.container.querySelector('.wf-modal button[type="submit"]'));
+  assert.match(view.container.querySelector('[role="alert"]').textContent, /卡片已过期/);
+  assert.ok(view.requests.filter(({ route }) => route === "/architect").length > reads);
+  assert.equal(view.requests.filter(({ route }) => route === "/architect/decisions").length, 1);
+});
+
+test("resolved cards keep their original location and cannot be acted on again", async () => {
+  const card = enableArchitect();
+  card.resolved = { action: "accept", by: "feishu:synthetic", name: "同事乙", at: 110 };
+  await view.render();
+  const node = view.container.querySelector(".wf-architect-card");
+  assert.ok(node.classList.contains("resolved"));
+  assert.match(node.textContent, /同事乙/);
+  assert.match(node.textContent, /飞书/);
+  assert.equal(node.querySelector(".wf-button-row"), null);
+  assert.equal(view.container.querySelector(".wf-architect-timeline").children[2], node);
+});
+
+test("a card deep link scrolls to and highlights that card", async () => {
+  const card = enableArchitect(), scrolled = [];
+  view.dom.window.HTMLElement.prototype.scrollIntoView = function () { scrolled.push(this.id); };
+  view.dom.reconfigure({ url: "http://localhost/workflow?card=" + card.card_id + "&execution=" + firstId });
+  await view.render();
+  assert.deepEqual(scrolled, ["wf-card-" + card.card_id]);
+  assert.ok(view.container.querySelector(".wf-architect-card").classList.contains("highlight"));
+  assert.equal(view.container.querySelector(".wf-task-drawer"), null);
+});
+
+test("opening and closing the task drawer preserves the single architect polling loop", async () => {
+  enableArchitect();
+  await view.render();
+  const reads = () => view.requests.filter(({ route }) => route === "/architect").length;
+  await view.click(view.button("任务", ".wf-architect > .wf-header button"));
+  assert.ok(view.container.querySelector(".wf-task-drawer"));
+  assert.equal(view.container.querySelectorAll(".wf-chat-composer").length, 1);
+  await view.poll();
+  const before = reads();
+  await view.click(view.container.querySelector('[aria-label="关闭任务抽屉"]'));
+  await view.poll();
+  assert.ok(reads() > before);
+  assert.equal(view.container.querySelectorAll(".wf-architect-conversation").length, 1);
+});
+
+test("pending count locates the earliest unresolved decision", async () => {
+  const card = enableArchitect(), scrolled = [];
+  view.dom.window.HTMLElement.prototype.scrollIntoView = function () { scrolled.push(this.id); };
+  view.server.architect.items.push({ ...card, card_id: "2".repeat(16), at: 104 });
+  view.server.architect.pending = 2;
+  await view.render();
+  await view.click(view.button("2 项待你决定"));
+  assert.deepEqual(scrolled, ["wf-card-" + card.card_id]);
+});
+
+test("saying yes in architect chat only sends a message and never a decision", async () => {
+  enableArchitect();
+  view.overrides.set("/architect/messages", init => {
+    assert.deepEqual(JSON.parse(init.body), { message: "可以，接受" });
+    return { status: "running" };
+  });
+  await view.render();
+  await typeArea(".wf-architect .wf-chat-composer textarea", "可以，接受");
+  await view.click(view.button("发送"));
+  assert.equal(view.requests.filter(({ route }) => route === "/architect/messages").length, 1);
+  assert.equal(view.requests.filter(({ route }) => route === "/architect/decisions").length, 0);
+});
+
+test("new architect messages scroll into view while unchanged polling preserves the reading position", async () => {
+  enableArchitect();
+  await view.render();
+  const log = view.container.querySelector(".wf-architect-timeline");
+  Object.defineProperty(log, "scrollHeight", { value: 900 });
+  view.server.architect.items.push({ type: "message", id: 3, role: "assistant", content: "新的回复", at: 110, channel: "web" });
+  await view.poll();
+  assert.equal(log.scrollTop, 900);
+  log.scrollTop = 100;
+  await view.poll();
+  assert.equal(log.scrollTop, 100);
+});
+
+test("an edited architect draft survives polling and creates only an unapproved task", async () => {
+  enableArchitect();
+  view.server.architect.conversation.objective = "模型草案";
+  await view.render();
+  await typeArea(".wf-task-draft textarea", "用户修订后的验收标准");
+  await view.poll();
+  assert.equal(view.container.querySelector(".wf-task-draft textarea").value, "用户修订后的验收标准");
+  view.overrides.set("/architect/tasks", init => {
+    assert.deepEqual(JSON.parse(init.body), { objective: "用户修订后的验收标准" });
+    view.server.architect.conversation.objective = "用户修订后的验收标准";
+    view.server.architect.conversation.submitted_objective = "用户修订后的验收标准";
+    return { execution_id: firstId };
+  });
+  await view.click(view.button("生成任务卡"));
+  assert.equal(view.requests.filter(({ route }) => route === "/architect/decisions").length, 0);
+  assert.equal(view.container.querySelector(".wf-task-draft"), null);
+});
+
+test("legacy conversations remain read-only and timeline language switches without changing user text", async () => {
+  enableArchitect();
+  view.server.architect.legacy = [{ id: "d".repeat(32), title: "历史需求" }];
+  view.server.conversation = { messages: [{ id: 3, role: "user", content: "原始记录" }] };
+  await view.render();
+  await view.click(view.button("历史需求"));
+  assert.match(view.container.querySelector(".wf-legacy-messages").textContent, /原始记录/);
+  assert.equal(view.container.querySelector(".wf-legacy textarea"), null);
+  await view.render("en");
+  assert.equal(view.container.querySelector(".wf-architect h1").textContent, "Project architect");
+  assert.match(view.container.querySelector(".wf-architect-timeline").textContent, /Feishu · 同事甲/);
+  assert.match(view.container.querySelector(".wf-architect-timeline").textContent, /导出结果给我/);
+  assert.match(view.container.querySelector(".wf-timeline-progress").textContent, /Platform tests passed; independent review started/);
+});
+
+test("bilingual labels contain no duplicate dictionary keys", () => {
+  const dictionary = source.slice(source.indexOf("  const EN = {"), source.indexOf("  const ZH ="));
+  const keys = [...dictionary.matchAll(/^    "([^"]+)":/gm)].map(match => match[1]);
+  assert.equal(new Set(keys).size, keys.length);
+});
+
+
+test("a legacy task keeps its original explicit approval in the task drawer", async () => {
+  enableArchitect();
+  view.server.records[0].workflow_version = 1;
+  await view.render();
+  await view.click(view.button("任务", ".wf-architect > .wf-header button"));
+  assert.ok(view.container.querySelector(".wf-task-drawer .wf-legacy-task"));
+  const button = view.button("确认需求", ".wf-task-drawer .wf-next-step button");
+  assert.equal(button.disabled, false);
+  await view.click(button);
+  assert.ok(view.container.querySelector(".wf-modal .wf-check input"));
+  assert.equal(view.container.querySelector('.wf-modal button[type="submit"]').disabled, true);
+  assert.equal(view.requests.filter(({ route }) => route.includes("/actions/")).length, 0);
 });

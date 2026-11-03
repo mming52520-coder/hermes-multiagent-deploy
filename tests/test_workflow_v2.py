@@ -373,5 +373,15 @@ class WorkflowV2Test(unittest.TestCase):
         self.assertIsNone(wc.review_verdict({"findings": [{"severity": "nit"}]}))
 
 
+    def test_full_flow_records_actual_transitions_and_same_state_saves_are_quiet(self):
+        self.ready()
+        manifest = self.workflow.load(self.execution)
+        states = [item["to"] for item in manifest["transitions"]]
+        self.assertEqual(states, ["WAITING_APPROVAL", "RUNNING_RESEARCH", "RUNNING_BUILD_AND_TEST",
+                                  "VERIFYING", "RUNNING_REVIEW", "VERIFYING", "READY_FOR_ACCEPTANCE"])
+        self.workflow.save(manifest)
+        self.assertEqual(self.workflow.load(self.execution)["transitions"], manifest["transitions"])
+
+
 if __name__ == "__main__":
     unittest.main()
