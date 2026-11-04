@@ -129,6 +129,41 @@ class ClientTest(unittest.TestCase):
             self.assertEqual(self.http.calls[-1][2], {"app_id": "cli_local", "app_secret": secret})
             self.assertTrue(self.http.calls[-1][1].startswith("https://open.larksuite.com/"))
 
+    def test_multiplex_publisher_defaults_domain_without_borrowing_another_profile(self):
+        from agent.secret_scope import (
+            current_secret_scope,
+            reset_multiplex_context,
+            reset_secret_scope,
+            set_multiplex_context,
+            set_secret_scope,
+        )
+
+        foreign = {"FEISHU_APP_ID": "cli_foreign", "FEISHU_APP_SECRET": "foreign-secret", "FEISHU_DOMAIN": "lark"}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".env").write_text("FEISHU_APP_ID=cli_bound\nFEISHU_APP_SECRET=bound-secret\n")
+            workflow = NS(root=root, env={"WORKFLOW_FEISHU_CHAT_ID": "oc_group"})
+            multiplex = set_multiplex_context(True)
+            try:
+                with patch.dict("os.environ", foreign):
+                    for scope in (None, foreign):
+                        with self.subTest(scope="unscoped" if scope is None else "foreign"):
+                            token = set_secret_scope(scope)
+                            try:
+                                rest._tokens.clear()
+                                client = rest.client_for(workflow)
+                                client.opener = self.http
+                                self.assertTrue(client.send_text("oc_group", "test"))
+                                self.assertEqual(client.host, "open.feishu.cn")
+                                auth = [call for call in self.http.calls if "/auth/v3/" in call[1]][-1]
+                                self.assertEqual(auth[2], {"app_id": "cli_bound", "app_secret": "bound-secret"})
+                                self.assertIsNone(rest.client_for(NS(root=root / "empty", env=workflow.env)))
+                                self.assertIs(current_secret_scope(), scope)
+                            finally:
+                                reset_secret_scope(token)
+            finally:
+                reset_multiplex_context(multiplex)
+
     def test_api_error_does_not_log_credentials_or_remote_response(self):
         def bad(req, **kwargs):
             return BytesIO(b'{"code":1234,"msg":"synthetic-secret"}')

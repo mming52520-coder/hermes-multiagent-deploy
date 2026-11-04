@@ -300,6 +300,14 @@ class Workflow:
                 "Container cwd /candidate aliases the task's host workspace.\n"
                 "Read all parent handoffs. Never commit, push, merge, deploy, or access hardware.\n"
             )
+            if self.modern(manifest) and row["number"]:
+                body = (
+                    "Current round revision/repair requirements:\n"
+                    + manifest["failures"][-1]["reason"] + "\n\n"
+                    "Implement and verify this request together with the original scope below. "
+                    "Earlier handoffs and PASS results describe the previous round; they do not verify this request. "
+                    "Read /handoff/repair/result.json for the associated evidence.\n\n"
+                ) + body
             if not self.modern(manifest):
                 body += ("Return execution_id, source_revision, candidate_revision, candidate_digest, "
                          "evidence_refs, blockers, residual_risks in completion metadata.\n")

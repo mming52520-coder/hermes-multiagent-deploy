@@ -109,6 +109,10 @@ class WorkflowV2Test(unittest.TestCase):
         self.assertEqual(manifest["failures"][-1]["requested_by"], "customer")
         with fixtures.connect_closing(board="default") as conn:
             self.assertEqual(self.workflow.completed_metadata(conn, previous)["verdict"], "PASS")
+            for role in ("builder", "tester", "reviewer"):
+                task_id = manifest["rounds"][-1]["tasks"][role]
+                self.assertIn("Adjust the fixture output", kb.build_worker_context(conn, task_id))
+                self.assertEqual(kb.get_task(conn, task_id).status, "triage")
         self.assertFalse((self.workflow.path(self.execution) / "acceptance.json").exists())
 
     def test_operator_retry_preserves_failed_run_and_uses_native_unblock(self):
@@ -242,6 +246,8 @@ class WorkflowV2Test(unittest.TestCase):
         self.workflow.repair(self.execution,"implementation","fix actual interface mismatch")
         with fixtures.connect_closing(board="default") as conn:
             self.assertEqual(len(kb.list_tasks(conn)),7)
+            for role in ("builder", "tester", "reviewer"):
+                self.assertIn("fix actual interface mismatch", kb.build_worker_context(conn, self.row()["tasks"][role]))
         self.workflow.approve(self.execution)
         self.advance()
         repair = self.workflow.handoff_path(self.execution,1) / "repair" / "result.json"

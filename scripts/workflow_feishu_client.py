@@ -129,16 +129,19 @@ class FeishuClient:
 def client_for(workflow):
     if not workflow.env.get("WORKFLOW_FEISHU_CHAT_ID", "").strip():
         return None
-    from hermes_cli.config import get_env_value_prefer_dotenv
+    from tui_gateway.launch_profile_policy import owner_secret_scope
 
     if __package__:
         from .workflow_runtime import home_scope
     else:
         from workflow_runtime import home_scope
     with home_scope(workflow.root):
-        app = get_env_value_prefer_dotenv("FEISHU_APP_ID")
-        secret = get_env_value_prefer_dotenv("FEISHU_APP_SECRET")
+        # Background publishers have no inherited secret ContextVar. Resolve the
+        # bound home's native owner mapping, including external/managed sources.
+        values = owner_secret_scope(workflow.root)
+        app = values.get("FEISHU_APP_ID")
+        secret = values.get("FEISHU_APP_SECRET")
         if not app or not secret:
             return None
-        domain = (get_env_value_prefer_dotenv("FEISHU_DOMAIN") or "feishu").strip().lower()
+        domain = (values.get("FEISHU_DOMAIN") or "feishu").strip().lower()
         return FeishuClient(app, secret, domain)

@@ -12,6 +12,7 @@
    bash update-workflow-plugin.sh
    hermes pm install --extra feishu
    bash scripts/configure-feishu-bridge.sh
+   hermes config set kanban.auto_decompose false
    hermes gateway restart
    ```
 
@@ -30,6 +31,12 @@
 两个配置文件及备份文件的权限为 600，备份目录权限为 700。配置脚本会打印私有备份目录。需要换群或更换应用时，先停止对应 Gateway、Dashboard，再重配并启动。若已有部署使用自定义信任策略，确保该群及测试成员已通过原生准入。应用和工作流两层权限都必须允许。
 
 网页的受控操作开关 `allow_actions`、原生会话认证、固定 Hermes 来源校验和预算仍生效。讨论需要可用的 Hermes 主模型。要走完真实研发和交付，请先在工作台确认四个角色的模型连接、项目输出位置、测试用 Docker 镜像和固定测试命令均已就绪。
+
+同一数据根须关闭原生 `kanban.auto_decompose`：上游默认会将 `triage` 中的任务自动拆解或释放，而工作流用这一列等待人工批准及平台验证。关闭后，现有工作流仍会在批准后自动推进四个角色。更改此设置对同一数据根的所有原生看板生效。[原生自动与手动编排](https://github.com/NousResearch/hermes-agent/blob/bf0203a794a07aac3ff764972ab9087baa4e4f4e/website/docs/user-guide/features/kanban.md)
+
+「提出修改」和「批准修复」会把本次意见原话放到下一轮开发、独立测试及审查任务的正文开头，作为当前验收要求，并保留原范围及历史凭据。上一轮的 PASS 不代表新增要求已经通过验证。
+
+总控台对话和后续架构师建议也接收本轮修改意见，按修改后的范围讨论。已经作出的决定保留当时的建议快照。
 
 ## 本机验收
 
@@ -56,9 +63,12 @@
 - 核对官方 `lark-oapi==1.6.8` 发行包与 SHA-256。按钮的 `action.value` 提供工作流卡号和动作，`action.form_value["reason"]` 提供表单原话。原始卡片消息必须匹配已保存的发送回执。文本内容无法伪装成回调。[SDK](https://pypi.org/project/lark-oapi/1.6.8/) · [回调字段](https://open.feishu.cn/document/feishu-cards/card-callback-communication)
 - 通用按钮由适配器立即返回空响应对象，SDK 的 WebSocket 通道以成功响应序列化。飞书协议允许保留当前卡片，toast 和 card 均为可选字段。本实现待决定完成后 PATCH 共享卡片。是否在实际客户端出现超时或错误提示，由上表的本机按钮步骤验证。[回调响应](https://open.feishu.cn/document/feishu-cards/card-callback-communication)
 - 固定 `pyproject.toml` 的 feishu extra 指定 `lark-oapi==1.6.8`。安装命令来自 Hermes 自带的 `pm.extras.install_hint`。REST 客户端使用 Python 标准库，令牌提前五分钟刷新，凭据只发送给选定的飞书或 Lark 官方域名。
+- 后台发送按绑定数据根调用原生 `owner_secret_scope`，保留外部及托管凭据来源；不依赖线程继承的凭据作用域。未设置可选 `FEISHU_DOMAIN` 时使用飞书，缺少应用凭据时不借用其他角色的值。
 - 飞书要求更新前后的卡片都显式设置 `update_multi: true`。新建消息使用确定的投递 UUID，服务端对相同 UUID 的创建请求提供一小时去重窗口。[发送消息](https://open.feishu.cn/document/server-docs/im-v1/message/create) · [更新消息卡片](https://open.feishu.cn/document/server-docs/im-v1/message-card/patch)
 
 本地通过 174 项 Python 回归（含 23 项飞书专项）、62 项前端测试和独立的原生只读挂载检查。在隔离项目中，测试经 Hermes 原生飞书适配器和已注册的 Gateway 钩子进入审批，用原生会话库、看板与验收逻辑核对两端结果。另用真实终端验证了 App Secret 不回显及备份权限。测试中的飞书网络和模型由替身提供。真实企业应用的订阅、群权限、客户端交互和网络地址由上述本机步骤验收。
+
+本机验收发现并修复后台凭据作用域、修改意见及建议上下文问题后，Python 回归为 176 项（含 24 项飞书专项）全部通过，原生只读挂载检查通过。前端未修改，沿用上一次的 62 项前端验证结果。
 
 ## 回滚
 

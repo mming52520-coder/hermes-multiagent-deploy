@@ -89,6 +89,7 @@ def architect_context(workflow, row: dict) -> dict:
             cards.append(card)
         if manifest.get("workflow_state") not in {"ACCEPTED", "REJECTED"}:
             tasks.append({"execution_id": execution, "objective": manifest["objective"],
+                          "current_request": manifest["failures"][-1] if manifest["rounds"][-1]["number"] else None,
                           "state": manifest.get("workflow_state"), "tasks": states})
     return {"project": workflow.project.name, "tasks": tasks, "cards": cards,
             "decisions": core_module().workflow_policy.read_decisions(workflow.root, workflow.board)}
