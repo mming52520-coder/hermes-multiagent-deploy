@@ -6,6 +6,46 @@
   const R = SDK.React, h = R.createElement;
   const { useState, useEffect } = R;
   const EN = {
+    "总控台对话": "Control console chat",
+    "任务抽屉": "Task drawer",
+    "关闭任务抽屉": "Close task drawer",
+    "架构师建议": "Architect recommendation",
+    "已由 {0} 于 {1} 在{2}{3}": "{0} chose {3} on {2} at {1}",
+    "飞书": "Feishu",
+    "网页": "web",
+    "查看任务详情": "View task details",
+    "提需求、看进展、做决定，都在这段对话里。": "Discuss requirements, follow progress and make decisions in this conversation.",
+    "{0} 项待你决定": "{0} decisions need you",
+    "总控台对话使用 Hermes 主模型。": "The control console chat uses your Hermes main model.",
+    "配置主模型连接": "Configure the main model connection",
+    "告诉我你的目标，我会梳理方案、协调研发，并把需要你确认的决定带回这里。": "Tell me your goal. I will plan the work, coordinate development and bring decisions back here.",
+    "系统进展": "System progress",
+    "「{0}」{1}": "“{0}” {1}",
+    "开始方案": "Planning started",
+    "方案完成，开发与独立测试并行": "Planning completed; development and independent tests run in parallel",
+    "核对平台验证": "Checking platform verification",
+    "平台测试通过，开始独立审查": "Platform tests passed; independent review started",
+    "审查发现阻断问题": "Review found blocking issues",
+    "平台测试未通过": "Platform tests failed",
+    "需要人工处理": "Operator attention required",
+    "飞书 · {0}": "Feishu · {0}",
+    "在总控台对话中讨论需求": "Discuss requirements in the control console chat",
+    "描述目标，或询问总控台的建议": "Describe a goal or ask the control console for advice",
+    "历史对话（只读）": "Previous conversations (read-only)",
+    "原因或修改意见": "Reason or requested changes",
+    "卡片已过期，请刷新。": "This card has expired. Refresh to see the current decision.",
+    "这张卡片不允许此操作。": "This action is unavailable on this card.",
+    "这项决策正在处理，请稍候刷新。": "This decision is being processed. Refresh shortly.",
+    "请填写原因或修改意见。": "Enter a reason or the requested changes.",
+    "总控台对话需要受支持的 Hermes v0.22.5。": "The control console chat requires a supported Hermes v0.22.5 installation.",
+    "历史对话只读，请在总控台对话中继续。": "Previous conversations are read-only. Continue in the control console chat.",
+    "总控正在回复，请稍候。": "The architect is replying. Please wait.",
+    "服务已重启，上一条回复中断；请重新发送。": "The service restarted and interrupted the previous reply. Send your message again.",
+    "请核对需求和本轮范围。批准后由后台协调方案、开发、独立测试和审查。": "Check the requirements and scope for this round. Approval starts planning, development, independent tests and review.",
+    "项目测试、独立测试和独立审查已通过，请核对交付及需要你决定的改动。": "Project tests, independent tests and review passed. Check the delivery and changes requiring your decision.",
+    "本轮验证或审查未通过，建议按具体问题批准下一轮修复。": "Verification or review failed. Consider a repair round addressing the reported issues.",
+    "已达到本任务的整改上限，请人工核对记录后决定不做。": "This task reached its repair limit. Review the evidence before rejecting the task.",
+    "角色被阻塞或运行环境未就绪，请先查看任务抽屉中的原因。": "An agent is blocked or the runtime is not ready. See the task drawer for details.",
     "总控对话": "Controller chat",
     "描述需求，或询问当前任务的进展": "Describe a requirement or ask about this task",
     "与总控讨论需求": "Discuss a task with the controller",
@@ -1024,12 +1064,211 @@
       error && h("p", { className: "wf-alert", role: "alert" }, error));
   }
 
-  function App() {
+  const ARCHITECT_ACTIONS = { approve: "批准并开始", accept: "确认验收", repair: "批准修复",
+    "request-changes": "提出修改", reject: "不做了", advance: "继续执行", "retry-worker": "重试失败角色" };
+
+  function TaskDrawer({ execution, onClose }) {
+    const ui = useText();
+    return h("aside", { className: "wf-task-drawer", "aria-label": ui("任务抽屉") },
+      h("header", null, h("h2", null, ui("任务")),
+        h("button", { className: "wf-button", onClick: onClose, "aria-label": ui("关闭任务抽屉") }, "×")),
+      h(App, { key: execution || "tasks", drawer: true, initialExecution: execution }));
+  }
+
+  function ArchitectChat({ meta }) {
+    const ui = useText(), { locale } = SDK.useI18n();
+    const [data, setData] = useState(null), [error, setError] = useState(""), [readError, setReadError] = useState("");
+    const [text, setText] = useState(""), [draft, setDraft] = useState(""), [busy, setBusy] = useState(false);
+    const [dialog, setDialog] = useState(null), [reason, setReason] = useState(""), [settings, setSettings] = useState(false);
+    const query = new URLSearchParams(window.location.search);
+    const [drawer, setDrawer] = useState(query.has("execution") && !query.has("card"));
+    const [execution, setExecution] = useState(query.get("execution") || "");
+    const [legacy, setLegacy] = useState(null), [highlight, setHighlight] = useState("");
+    const readRef = R.useRef(null), timerRef = R.useRef(null);
+    const messagesRef = R.useRef(null);
+    useEffect(() => {
+      let active = true, reading = false;
+      async function read() {
+        if (reading) return;
+        reading = true;
+        try {
+          const next = await request("/architect");
+          if (active) { setData(next); setReadError(""); }
+        } catch (e) { if (active) setReadError(message(e)); }
+        finally { reading = false; }
+      }
+      readRef.current = read;
+      read();
+      const timer = setInterval(read, 2000);
+      return () => { active = false; clearInterval(timer); clearTimeout(timerRef.current); };
+    }, []);
+    const objective = data?.conversation?.objective || "";
+    useEffect(() => {
+      setDraft(objective === data?.conversation?.submitted_objective ? "" : objective);
+    }, [objective, data?.conversation?.submitted_objective]);
+    function locate(id) {
+      const element = document.getElementById("wf-card-" + id);
+      if (!element) return;
+      element.scrollIntoView?.({ behavior: "auto", block: "center" });
+      setHighlight(id); clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setHighlight(""), 2000);
+    }
+    const linkedCard = query.get("card");
+    const linkedExists = !!data?.items?.some(item => item.type === "card" && item.card_id === linkedCard);
+    const lastMessage = data?.items?.filter(item => item.type === "message").at(-1)?.id;
+    useEffect(() => {
+      if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+    }, [lastMessage, data?.conversation?.pending?.input, data?.conversation?.pending?.text, objective]);
+    useEffect(() => {
+      if (linkedExists) locate(linkedCard);
+    }, [linkedExists, linkedCard]);
+    useEffect(() => {
+      if (data?.conversation?.highlight) locate(data.conversation.highlight.card_id);
+    }, [data?.conversation?.highlight?.at]);
+    useEffect(() => {
+      if (!dialog) return;
+      const form = document.querySelector(".wf-architect .wf-modal"), previous = document.activeElement;
+      form?.querySelector("textarea,button")?.focus();
+      function keys(event) {
+        if (event.key === "Escape" && !busy) { event.preventDefault(); setDialog(null); }
+        if (event.key === "Tab") {
+          const fields = Array.from(form.querySelectorAll("textarea,button:not([disabled])"));
+          if (event.shiftKey && document.activeElement === fields[0]) { event.preventDefault(); fields.at(-1)?.focus(); }
+          else if (!event.shiftKey && document.activeElement === fields.at(-1)) { event.preventDefault(); fields[0]?.focus(); }
+        }
+      }
+      form?.addEventListener("keydown", keys);
+      return () => { form?.removeEventListener("keydown", keys); previous?.focus(); };
+    }, [dialog, busy]);
+    const waiting = data?.conversation?.status === "running";
+    const writable = !!meta.actions_enabled && !busy && !readError;
+    const pending = data?.conversation?.pending;
+    let streamed = "";
+    const partial = pending?.text?.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)/);
+    if (partial) { try { streamed = JSON.parse('"' + partial[1] + '"'); } catch (_) { /* wait for a complete escape */ } }
+    async function send(event) {
+      event.preventDefault();
+      if (!writable || waiting || !text.trim()) return;
+      setBusy(true); setError("");
+      try { await post("/architect/messages", { message: text }); setText(""); await readRef.current(); }
+      catch (e) { setError(message(e)); }
+      finally { setBusy(false); }
+    }
+    async function task() {
+      if (!writable || !draft.trim()) return;
+      setBusy(true); setError("");
+      try { await post("/architect/tasks", { objective: draft }); setDraft(""); await readRef.current(); }
+      catch (e) { setError(message(e)); }
+      finally { setBusy(false); }
+    }
+    async function decide(event) {
+      event.preventDefault();
+      if (!writable) return;
+      setBusy(true); setError("");
+      try {
+        await post("/architect/decisions", { card_id: dialog.card.card_id, action: dialog.action, reason });
+        setDialog(null); setReason(""); await readRef.current();
+      } catch (e) {
+        setError(message(e));
+        setDialog(null); await readRef.current();
+      } finally { setBusy(false); }
+    }
+    function openTask(id) { setExecution(id); setDrawer(true); }
+    function cardView(card) {
+      const resolved = card.resolved;
+      return h("article", { key: card.card_id, id: "wf-card-" + card.card_id,
+        className: cx("wf-architect-card", resolved && "resolved", highlight === card.card_id && "highlight") },
+        h("h3", null, ui(card.title)), h("p", { className: "wf-card-objective" }, taskTitle(card.objective)),
+        h("p", null, ui(card.text)),
+        card.advice?.source === "model" && h("div", { className: "wf-architect-advice" },
+          h("strong", null, ui("架构师建议")), h("p", null, card.advice.text)),
+        card.advice?.source === "rule" && card.advice.text !== card.text && h("p", null, ui(card.advice.text)),
+        h(DecisionReasons, { decision: { reasons: card.reasons } }),
+        !!card.blockers?.length && h(ReviewFindings, { findings: card.blockers }),
+        resolved ? h("p", { className: "wf-resolved" },
+          ui("已由 {0} 于 {1} 在{2}{3}", resolved.name,
+            date(resolved.at, locale), ui(resolved.by.startsWith("feishu:") ? "飞书" : "网页"),
+            ui(ARCHITECT_ACTIONS[resolved.action] || resolved.action)))
+          : h("div", { className: "wf-button-row" }, card.actions.map(action =>
+            h("button", { key: action, className: cx("wf-button", action === card.actions[0] && "wf-primary"),
+              disabled: !writable, onClick: () => { setReason(""); setError(""); setDialog({ card, action }); } },
+            ui(ARCHITECT_ACTIONS[action] || action)))),
+        resolved?.reason && h("p", null, resolved.reason),
+        h("button", { className: "wf-text-button", onClick: () => openTask(card.execution_id) }, ui("查看任务详情")));
+    }
+    const items = data?.items || [];
+    return h("main", { className: cx("workflow-app wf-architect", drawer && "wf-drawer-open") },
+      h("header", { className: "wf-header" }, h("div", null, h("h1", null, ui("总控台对话")),
+        h("p", { className: "wf-muted" }, ui("提需求、看进展、做决定，都在这段对话里。"))),
+        h("div", { className: "wf-header-actions" },
+          h("button", { className: "wf-button", disabled: !data?.pending,
+            onClick: () => { const first = items.find(item => item.type === "card" && !item.resolved); if (first) locate(first.card_id); } },
+            ui("{0} 项待你决定", data?.pending || 0)),
+          meta.actions_enabled && meta.model_connections_supported && h("button", { className: "wf-button", "aria-expanded": settings,
+            onClick: () => setSettings(value => !value) }, ui("模型配置")),
+          h("button", { className: "wf-button", "aria-expanded": drawer, onClick: () => setDrawer(value => !value) }, ui("任务")))),
+      settings && h(ModelConnections, { execution: "", onConfigured: () => setSettings(false) }),
+      h("div", { className: "wf-architect-layout" },
+        h("section", { className: "wf-architect-conversation", "aria-label": ui("总控台对话") },
+          h("p", { className: "wf-model-hint" }, ui("总控台对话使用 Hermes 主模型。"), " ",
+            h("a", { href: "/models" }, ui("配置主模型连接"))),
+          readError && h("div", { className: "wf-alert", role: "alert" }, ui(readError),
+            h("button", { className: "wf-button", onClick: () => readRef.current() }, ui("重新读取"))),
+          error && h("p", { className: "wf-alert", role: "alert" }, ui(error)),
+          h("div", { className: "wf-architect-timeline", ref: messagesRef, role: "log", "aria-live": "polite" },
+            !items.length && h("p", { className: "wf-chat-welcome" }, ui("告诉我你的目标，我会梳理方案、协调研发，并把需要你确认的决定带回这里。")),
+            items.map(item => item.type === "card" ? cardView(item)
+              : item.type === "progress" ? h("button", { key: item.id, className: "wf-timeline-progress",
+                onClick: () => openTask(item.execution_id) }, ui("系统进展"), " · ",
+                  item.label ? ui("「{0}」{1}", item.objective, ui(item.label)) : ui(item.text))
+                : h("article", { key: "message-" + item.id, className: "wf-chat-message wf-chat-" + item.role },
+                  h("small", null, ui(item.role === "user" ? "你" : "总控台对话"),
+                    item.channel === "feishu" && " · " + ui("飞书 · {0}", item.name)), h("div", null, item.content))),
+            pending && !items.some(item => item.type === "message" && item.role === "user" && item.content === pending.input)
+              && h("article", { className: "wf-chat-message wf-chat-user" }, pending.input),
+            waiting && h("article", { className: "wf-chat-message wf-chat-assistant", role: "status" }, streamed || ui("总控正在回复…")),
+            draft && h("section", { className: "wf-task-draft", "aria-label": ui("任务草案") },
+              h("h3", null, ui("任务草案")),
+              h("textarea", { value: draft, rows: 5, maxLength: 4000, "aria-label": ui("任务草案"), onChange: event => setDraft(event.target.value) }),
+              h("button", { className: "wf-button wf-primary", disabled: !writable || waiting || !draft.trim(), onClick: task }, ui("生成任务卡")))),
+          data?.conversation?.error && h("p", { className: "wf-alert", role: "alert" }, ui(data.conversation.error)),
+          h("form", { className: "wf-chat-composer", onSubmit: send },
+            h("textarea", { value: text, rows: 3, maxLength: 4000, required: true,
+              "aria-label": ui("在总控台对话中讨论需求"), placeholder: ui("描述目标，或询问总控台的建议"), disabled: !meta.actions_enabled,
+              onChange: event => setText(event.target.value),
+              onKeyDown: event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault(); event.currentTarget.form.requestSubmit(); } } }),
+            h("button", { className: "wf-button wf-primary", disabled: !writable || waiting || !text.trim() }, ui("发送"))),
+          !!data?.legacy?.length && h("details", { className: "wf-legacy" }, h("summary", null, ui("历史对话（只读）")),
+            data.legacy.map(row => h("button", { key: row.id, className: "wf-text-button", onClick: async () => {
+              try { setLegacy(await request("/conversations/" + row.id)); } catch (e) { setError(message(e)); }
+            } }, row.title)),
+            legacy && h("div", { className: "wf-legacy-messages" }, legacy.messages.map(item =>
+              h("p", { key: item.id }, h("strong", null, ui(item.role === "user" ? "你" : "总控台对话")), " · ", item.content))))),
+        drawer && h(TaskDrawer, { execution, onClose: () => setDrawer(false) })),
+      dialog && h("div", { className: "wf-modal-backdrop" },
+        h("form", { className: "wf-modal", role: "dialog", "aria-modal": true,
+          "aria-label": ui(ARCHITECT_ACTIONS[dialog.action]), onSubmit: decide },
+          h("h2", null, ui(ARCHITECT_ACTIONS[dialog.action])),
+          h("p", { className: "wf-confirm-target" }, dialog.card.objective),
+          h("p", null, ui("第 {0} 轮", dialog.card.round + 1)),
+          h("p", null, ui(dialog.card.text)), h(DecisionReasons, { decision: { reasons: dialog.card.reasons } }),
+          ["repair", "request-changes", "reject"].includes(dialog.action) && h("label", null, ui("原因或修改意见"),
+            h("textarea", { required: true, maxLength: 2000, rows: 3, value: reason, onChange: event => setReason(event.target.value) })),
+          dialog.action === "accept" && h("label", null, ui("备注（可选，会记入「已定的事」）"),
+            h("textarea", { maxLength: 2000, rows: 2, value: reason, onChange: event => setReason(event.target.value) })),
+          h("div", { className: "wf-modal-actions" },
+            h("button", { type: "button", className: "wf-button", disabled: busy, onClick: () => setDialog(null) }, ui("取消")),
+            h("button", { type: "submit", className: "wf-button wf-primary", disabled: !writable },
+              ui(busy ? "正在处理…" : ARCHITECT_ACTIONS[dialog.action]))))));
+  }
+
+  function App({ drawer = false, initialExecution = null } = {}) {
     const ui = useText();
     const { locale } = SDK.useI18n();
     const formatDate = value => date(value, locale);
     const [meta, setMeta] = useState(null), [rows, setRows] = useState(null), [selected, setSelected] = useState(() => {
-      const linked = new URLSearchParams(window.location.search).get("execution");
+      const linked = initialExecution || new URLSearchParams(window.location.search).get("execution");
       return linked && /^[0-9a-f]{32}$/.test(linked) ? linked : null;
     });
     const [snapshotDetail, setDetail] = useState(null), [tab, setTab] = useState("overview"), [focus, setFocus] = useState("researcher");
@@ -1061,6 +1300,7 @@
           const [info, data] = await Promise.all([request("/meta"), request("/executions")]);
           if (!active) return;
           setMeta(info); setRows(data.executions);
+          if (info.architect_supported && !drawer) return;
           if (info.conversation_supported) {
             const chats = await request("/conversations");
             if (active) setConversations(chats.conversations);
@@ -1145,7 +1385,7 @@
         setDialog(null); setAck(false); setReason("");
       } catch (e) { setError(message(e)); } finally { setBusy(false); reload(); }
     }
-    const writable = !!meta?.actions_enabled;
+    const writable = !!meta?.actions_enabled && (!drawer || detail && (detail.workflow_version || 1) < 2);
     const canOperate = writable && !busy && !refreshing && !readError && updatedAt !== null && (!selected || !!detail);
     const conversational = !!meta?.conversation_supported, needle = query.trim().toLowerCase();
     const visible = byAttention((rows || []).filter(row => row.objective.toLowerCase().includes(needle)), conversational);
@@ -1190,7 +1430,9 @@
     const newTaskButton = h("button", { className: "wf-button wf-primary", disabled: !canOperate,
       onClick: () => { setError(""); if (conversational) { setComposing(true); setConversationId(""); setChatReset(value => value + 1); } else setDialog("new"); } }, ui("新建任务"));
 
-    return h("main", { className: cx("workflow-app wf-client", conversational && "wf-conversational") },
+    if (meta?.architect_supported && !drawer) return h(ArchitectChat, { meta });
+    return h(drawer ? "section" : "main", { className: cx("workflow-app wf-client", conversational && "wf-conversational",
+      drawer && detail && (detail.workflow_version || 1) < 2 && "wf-legacy-task") },
       h("header", { className: "wf-header" }, h("h1", null, ui("工作台")),
         h("div", { className: "wf-header-actions" },
           writable && meta?.model_connections_supported && h("button", { className: "wf-button", "aria-expanded": settingsOpen,
@@ -1226,7 +1468,7 @@
               h("h3", null, taskTitle(row.objective)),
               h(Badge, { tone: tone(listLabel(row, conversational)) }, ui(listLabel(row, conversational)))))
             : h("p", { className: "wf-muted" }, ui(query ? "没有匹配的目标" : "还没有任务"))),
-        conversational && h(ControllerChat, { execution: composing ? null : detail, conversationId, resetKey: chatReset, writable,
+        conversational && !drawer && h(ControllerChat, { execution: composing ? null : detail, conversationId, resetKey: chatReset, writable,
           onConversation: id => { setConversationId(id); request("/conversations").then(data => setConversations(data.conversations)); },
           onCreated: (execution, id) => { setSelected(execution); setConversationId(id); setComposing(false); setDetail(null); reload(); } }),
         h("section", { className: "wf-detail", "aria-label": ui("执行详情") },

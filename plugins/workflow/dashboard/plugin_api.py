@@ -6,6 +6,7 @@ from contextlib import closing
 import importlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 import sqlite3
@@ -66,8 +67,133 @@ class ConversationMessage(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
 
 
+class ArchitectDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    card_id: str
+    action: str
+    reason: str = Field(default="", max_length=2000)
+
+
 def conversations_module():
     return importlib.import_module(core_module().__package__ + ".workflow_conversation")
+
+
+def architect_context(workflow, row: dict) -> dict:
+    module = timeline_module()
+    tasks, cards = [], []
+    for execution in row.get("execution_ids", []):
+        manifest = workflow.load(execution)
+        states = module.task_states(workflow, manifest)
+        card = module.card_for(manifest, states)
+        if card:
+            cards.append(card)
+        if manifest.get("workflow_state") not in {"ACCEPTED", "REJECTED"}:
+            tasks.append({"execution_id": execution, "objective": manifest["objective"],
+                          "state": manifest.get("workflow_state"), "tasks": states})
+    return {"project": workflow.project.name, "tasks": tasks, "cards": cards,
+            "decisions": core_module().workflow_policy.read_decisions(workflow.root, workflow.board)}
+
+
+def architect_settings(request: Request) -> dict:
+    settings = read_settings()
+    try:
+        require_action(request, settings)
+    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if importlib.util.find_spec("hermes_cli.provider_catalog") is None:
+        raise HTTPException(409, "总控台对话需要受支持的 Hermes v0.22.5。")
+    return settings
+
+
+@router.get("/architect")
+def architect_view():
+    settings = read_settings()
+    workflow = bound_workflow(settings)
+    chats = conversations_module()
+    row = chats.architect(workflow, create_missing=False)
+    result = {"conversation": chats.view(workflow, row["id"]) if row else None,
+              **(timeline_module().timeline(workflow, row) if row else {"items": [], "pending": 0}),
+              "legacy": [{"id": item["id"], "title": item["title"], "updated_at": item["updated_at"]}
+                         for item in chats.listing(workflow) if item.get("kind") != "architect"]}
+    if settings.get("allow_actions"):
+        advisor = importlib.import_module(core_module().__package__ + ".workflow_advisor")
+        for card in result["items"]:
+            if card["type"] == "card" and not card["resolved"]:
+                manifest = workflow.load(card["execution_id"])
+                if f"{card['round']}:{card['state']}" not in manifest.get("advice", {}):
+                    advisor.schedule(workflow, card["execution_id"])
+    return result
+
+
+@router.post("/architect/messages")
+def architect_message(request: Request, body: ConversationMessage):
+    settings = architect_settings(request)
+    workflow = bound_workflow(settings)
+    row = conversations_module().architect(workflow)
+    try:
+        return conversations_module().start(workflow, row["id"], body.message,
+                                             architect_context(workflow, row), channel="web")
+    except (ValueError, OSError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post("/architect/tasks")
+def architect_task(request: Request, body: Submission):
+    settings = architect_settings(request)
+    workflow = bound_workflow(settings)
+    row = conversations_module().architect(workflow)
+    if not body.objective.strip():
+        raise HTTPException(422, "请填写任务需求。")
+    try:
+        return conversations_module().submit(workflow, row["id"], body.objective)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post("/architect/decisions")
+def architect_decision(request: Request, body: ArchitectDecision):
+    settings = architect_settings(request)
+    workflow = bound_workflow(settings)
+    row = conversations_module().architect(workflow, create_missing=False)
+    module = timeline_module()
+    for execution in (row or {}).get("execution_ids", []):
+        with workflow.locked(execution):
+            manifest = workflow.load(execution)
+            card = module.card_for(manifest, module.task_states(workflow, manifest))
+            if not card or card["card_id"] != body.card_id:
+                continue
+            if body.action not in card["actions"]:
+                raise HTTPException(409, "这张卡片不允许此操作。")
+            if body.action in {"reject", "request-changes", "repair"} and not body.reason.strip():
+                raise HTTPException(409, "请填写原因或修改意见。")
+            claim = manifest.get("decision_claim")
+            if claim:
+                try:
+                    os.kill(claim["pid"], 0)
+                except ProcessLookupError:
+                    pass
+                else:
+                    raise HTTPException(409, "这项决策正在处理，请稍候刷新。")
+            manifest["decision_claim"] = {"card_id": body.card_id, "pid": os.getpid()}
+            workflow.save(manifest)
+        # Native methods take their own execution locks. Model and bridge I/O are outside them.
+        try:
+            parameters = Action(confirmed=True, round_number=card["round"], reason=body.reason,
+                                **(card.get("retry") or {}))
+            result = perform(settings, execution, body.action, parameters, by="web", name="你", expected_card=card)
+            if body.action in {"repair", "request-changes"}:
+                result = perform(settings, execution, "approve",
+                                 Action(confirmed=True, round_number=result["round_number"]), by="web", name="你")
+            return result
+        except (ValueError, OSError, sqlite3.Error, subprocess.SubprocessError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        finally:
+            with workflow.locked(execution):
+                manifest = workflow.load(execution)
+                if manifest.get("decision_claim", {}).get("card_id") == body.card_id:
+                    manifest.pop("decision_claim", None)
+                    workflow.save(manifest)
+    raise HTTPException(409, "卡片已过期，请刷新。")
 
 
 class ModelParameters(BaseModel):
@@ -326,6 +452,7 @@ def metadata():
     enabled = settings.get("allow_actions") is True
     return {"name": "Hermes Workflow", "version": "0.8.0", "phase": "P0_PARTIAL_PASS",
             "conversation_supported": True,
+            "architect_supported": importlib.util.find_spec("hermes_cli.provider_catalog") is not None,
             "project_name": Path(env["PROJECT_DIR"]).name, "board": env["BOARD_SLUG"],
             "actions_enabled": enabled,
             "model_connections_supported": importlib.util.find_spec("hermes_cli.provider_catalog") is not None,
@@ -363,6 +490,9 @@ def conversation_message(request: Request, conversation: str, body: Conversation
     workflow = bound_workflow(settings)
     try:
         row = conversations_module().load(workflow, conversation)
+        if row.get("kind") == "architect":
+            return conversations_module().start(workflow, conversation, body.message,
+                                                  architect_context(workflow, row), channel="web")
         context = {"project": workflow.project.name,
                    "decisions": core_module().workflow_policy.read_decisions(workflow.root, workflow.board)}
         if row["execution_id"]:
@@ -544,14 +674,20 @@ def submit(request: Request, body: Submission):
         raise HTTPException(409, str(exc)) from exc
 
 
-@router.post("/executions/{execution}/actions/{action}")
-def run_action(request: Request, execution: str,
-               action: Literal["approve", "advance", "launch", "start", "prepare-review", "verify-builder", "verify-reviewer", "accept", "repair", "request-changes", "retry-worker", "reject"], body: Action):
-    settings = read_settings()
+def timeline_module():
+    return importlib.import_module(core_module().__package__ + ".workflow_timeline")
+
+
+def perform(settings: dict, execution: str, action: str, body: Action, *, by: str, name: str,
+            expected_card: dict | None = None) -> dict:
     manifest = load_manifest(settings, execution)
-    try:
-        require_action(request, settings, body.confirmed)
-        workflow = bound_workflow(settings)
+    workflow = bound_workflow(settings)
+    card = None
+    if manifest.get("workflow_version", 1) >= 2 and manifest.get("rounds"):
+        card = timeline_module().card_for(manifest, timeline_module().task_states(workflow, manifest))
+    if expected_card and (not card or card["card_id"] != expected_card["card_id"]):
+        raise HTTPException(409, "卡片已过期，请刷新。")
+    def apply():
         if action in {"approve", "launch"} and body.round_number is None:
             raise HTTPException(400, "请刷新并确认当前执行轮次。")
         if action == "approve":
@@ -570,7 +706,8 @@ def run_action(request: Request, execution: str,
             if receipt["status"] != "PASS":
                 raise HTTPException(409, "验证没有通过，请查看执行证据。")
         elif action == "repair":
-            workflow.repair(execution, body.kind, body.reason)
+            workflow.repair(execution, body.kind, body.reason,
+                            **({"expected_round": expected_card["round"]} if expected_card else {}))
             return {"execution_id": execution, "action": action, "completed": True,
                     "round_number": workflow.load(execution)["rounds"][-1]["number"]}
         elif action == "request-changes":
@@ -580,14 +717,32 @@ def run_action(request: Request, execution: str,
             return {"execution_id": execution, "action": action, "completed": True,
                     "round_number": workflow.load(execution)["rounds"][-1]["number"]}
         elif action == "reject":
-            workflow.reject(execution, body.reason)
+            workflow.reject(execution, body.reason,
+                            **({"expected_round": expected_card["round"]} if expected_card else {}))
             return {"execution_id": execution, "action": action, "completed": True}
         elif action == "retry-worker":
             if body.role is None or body.run_id is None or body.round_number is None:
                 raise HTTPException(400, "请刷新并确认需要重试的角色。")
             return workflow.retry_worker(execution, body.role, body.round_number, body.run_id, body.reason)
         else:
-            workflow.accept(execution, body.reason)
+            workflow.accept(execution, body.reason, **({"expected_round": expected_card["round"],
+                "expected_candidate": expected_card.get("candidate_digest")} if expected_card else {}))
         return {"execution_id": execution, "action": action, "completed": True}
+
+    result = apply()
+    if card and action in card["actions"]:
+        timeline_module().record_decision(workflow, execution, card["card_id"], action, by, name, body.reason, card=card)
+        importlib.import_module(core_module().__package__ + ".workflow_feishu").sync_card(workflow, execution, card["card_id"])
+    return result
+
+
+@router.post("/executions/{execution}/actions/{action}")
+def run_action(request: Request, execution: str,
+               action: Literal["approve", "advance", "launch", "start", "prepare-review", "verify-builder", "verify-reviewer", "accept", "repair", "request-changes", "retry-worker", "reject"], body: Action):
+    settings = read_settings()
+    load_manifest(settings, execution)
+    try:
+        require_action(request, settings, body.confirmed)
+        return perform(settings, execution, action, body, by="web", name="你")
     except (ValueError, OSError, sqlite3.Error, subprocess.SubprocessError) as exc:
         raise HTTPException(409, str(exc)) from exc
