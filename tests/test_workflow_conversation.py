@@ -214,6 +214,31 @@ class ConversationTest(unittest.TestCase):
         self.assertEqual(first["id"], self.controller.architect(self.workflow)["id"])
         self.assertEqual(first["execution_ids"], [])
 
+    def test_previous_architect_title_changes_on_read_without_renaming_legacy_history(self):
+        row = self.controller.architect(self.workflow)
+        self.assertEqual(row["title"], "总控台对话")
+        old_title = "项目架构师"
+        row["title"] = old_title
+        self.controller.save(self.workflow, row)
+        legacy = self.create()
+        legacy.pop("kind", None)
+        legacy["title"] = old_title
+        self.controller.save(self.workflow, legacy)
+        settings = json.loads(self.config.read_text())
+        settings["allow_actions"] = False
+        self.config.write_text(json.dumps(settings))
+        path = self.controller.directory(self.workflow, row["id"]) / "conversation.json"
+        before = path.read_bytes()
+
+        timeline = self.client.get(self.url + "/architect").json()
+        self.assertEqual(timeline["conversation"]["id"], row["id"])
+        self.assertEqual(timeline["conversation"]["title"], "总控台对话")
+        self.assertEqual(timeline["conversation"]["execution_ids"], row["execution_ids"])
+        titles = {item["id"]: item["title"] for item in self.client.get(self.url + "/conversations").json()["conversations"]}
+        self.assertEqual(titles[row["id"]], "总控台对话")
+        self.assertEqual(titles[legacy["id"]], old_title)
+        self.assertEqual(path.read_bytes(), before)
+
     def test_highlight_only_refers_to_a_current_card_and_never_approves_work(self):
         row = self.controller.architect(self.workflow)
         selected = {"id": "not-current"}

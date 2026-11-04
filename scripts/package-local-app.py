@@ -70,7 +70,7 @@ def package(source: Path, output: Path) -> None:
         "hermes_source_commit": "bf0203a794a07aac3ff764972ab9087baa4e4f4e",
         "upstream_frontend_changes": "补齐模型、配置、密钥、频道、系统、自动化模板及弹窗的中文；复用原生 i18n 切换和持久化；工作流同步中英文；完整源码补丁及语言行为测试随包提供",
         "workflow_writes_v0225": "流程v2：审批后由原生owner自动推进开发、独立测试和审查，最终人工确认交付；历史任务继续原规则", "includes_credentials_or_user_state": False,
-        "workflow_frontend_changes": "架构师对话 A 阶段：项目单一对话、多任务时间线、按钮决策与独立推荐、任务抽屉及卡片深链；保留历史布局和受控操作",
+        "workflow_frontend_changes": "总控台对话包含多任务时间线、按钮决策、架构师建议、任务抽屉及卡片深链",
         "model_connections": "复用 Hermes 原生厂商与凭据接口；可逐角色覆盖；内置官方 API 默认值，导入 Key 后主动刷新模型列表；保存不触发推理",
     }, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     files["MANIFEST.sha256"] = "".join(hashlib.sha256(data).hexdigest() + "  " + name + "\n"

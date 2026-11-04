@@ -1,7 +1,8 @@
-# 架构师对话 A 阶段验收记录
+# 总控台对话 A 阶段验收记录
 
-日期：2026-11-03。基于 `web/ui-refresh@e1e5be4`，实现分支 `web/architect-chat`。
-本阶段依赖尚未合并的 [PR #5](https://github.com/mming52520-coder/hermes-multiagent-deploy/pull/5)。用户验收后才创建 PR；若 #5 仍未合并，目标分支为 `web/ui-refresh`。合并需要用户另行确认。
+2026-11-04，唯一对话窗口以「总控台对话」的名称通过 A 阶段验收。新建和已有的项目会话均显示新名称，已有会话的编号、消息和任务关联继续使用。历史任务的自定义标题按原记录展示。
+
+实现分支为 `web/architect-chat`，目标分支为 `web/ui-refresh`，基线为 `e1e5be4`。合并需要单独确认。[依赖的 PR #5](https://github.com/mming52520-coder/hermes-multiagent-deploy/pull/5)
 
 ## 行为与边界
 
@@ -33,14 +34,16 @@ GitHub 参照核对了官方 Hermes 的 session 初始化、无工具 Agent 和�
 | `test_workflow_v2` | 19 | 20 通过 |
 | `test_workflow_policy` | 11 | 11 通过 |
 | `test_workflow_automation` | 4 | 4 通过 |
-| `test_workflow_conversation` | 8 | 11 通过 |
+| `test_workflow_conversation` | 8 | 12 通过 |
 | `test_workflow_timeline` | 无 | 16 通过 |
 | `test_workflow`，固定 v0.18.2 | — | 47 通过 |
 | `check_workflow_writes_v0225` | — | 11 通过 |
 | `check_workflow_models` | — | 9 通过 |
 | 原生只读发现 / 挂载 / 认证检查 | — | 通过 |
 
-共 150 项 Python 测试、62 项前端测试。另检查 Python 编译、JavaScript 语法、Shell 语法、差异空白和接入包文件及内容清单。前端原 49 项继续走能力开关关闭的旧布局，新增测试覆盖消息与进展顺序、确认弹窗、过期卡、已处理结论、深链、抽屉轮询、待决策定位、自然语言不触发操作、草案编辑、历史只读和新消息滚动；相同内容的轮询保留阅读位置。
+共 151 项 Python 测试、62 项前端测试。另检查 Python 编译、JavaScript 语法、Shell 语法、差异空白和接入包文件及内容清单。前端原 49 项继续走能力开关关闭的旧布局，新增测试覆盖消息与进展顺序、确认弹窗、过期卡、已处理结论、深链、抽屉轮询、待决策定位、自然语言不触发操作、草案编辑、历史只读和新消息滚动。相同内容的轮询保留阅读位置。
+
+改名复验覆盖了中英文标题、消息署名，以及用只读接口打开旧名称的会话。另在隔离项目安装插件，通过认证 API 对已具备测试及审查证据的任务点击验收对应的操作。后端生成操作员验收凭据，原位置的卡片显示结论，重复提交原卡片返回 409。浏览器预览实测输入「可以」后仍有两项待决定，在确认窗口提交后减少为一项。
 
 浏览器预览验证了单一输入框、任务抽屉、确认目标及轮次、证据入口、卡片定位与移动端布局。截图为离线演示，不能当作真实模型、任务执行或飞书联动的证据。
 

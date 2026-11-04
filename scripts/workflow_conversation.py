@@ -19,6 +19,7 @@ else:
     import workflow_runtime
 
 _jobs: dict[str, dict] = {}
+ARCHITECT_TITLE = "总控台对话"
 
 PROMPT = """你是用户唯一直接对话的项目架构师。你负责需求澄清、架构取舍和跟进后台研发流程；
 用户不需要分别找方案、开发、独立测试或审查角色。进展以平台证据为准。
@@ -44,8 +45,15 @@ def directory(workflow, conversation: str) -> Path:
     return workflow.root / "workflow" / "conversations" / conversation
 
 
+def _read_row(path: Path) -> dict:
+    row = json.loads(path.read_text())
+    if row.get("kind") == "architect" and row.get("title") == "项目架构师":
+        row["title"] = ARCHITECT_TITLE
+    return row
+
+
 def load(workflow, conversation: str) -> dict:
-    row = json.loads((directory(workflow, conversation) / "conversation.json").read_text())
+    row = _read_row(directory(workflow, conversation) / "conversation.json")
     if row["project"] != str(workflow.project) or row["board"] != workflow.board:
         raise ValueError("会话不属于当前项目。")
     return row
@@ -79,7 +87,7 @@ def create(workflow, execution: str = "", *, kind: str = "task") -> dict:
            "board": workflow.board, "execution_id": execution, "title": "新任务", "objective": "",
            "created_at": time.time(), "updated_at": time.time(), "status": "idle", "error": "", "kind": kind}
     if kind == "architect":
-        row.update(execution_ids=[], title="项目架构师")
+        row.update(execution_ids=[], title=ARCHITECT_TITLE)
     db = acquire(workflow.root / "state.db")
     try:
         db.create_session(conversation, "workflow-controller", profile_name="default", cwd=str(workflow.project))
@@ -123,7 +131,7 @@ def architect(workflow, *, create_missing: bool = True) -> dict | None:
 def listing(workflow) -> list[dict]:
     root = workflow.root / "workflow" / "conversations"
     return sorted((row for path in root.glob("*/conversation.json")
-                   if (row := json.loads(path.read_text()))["project"] == str(workflow.project)
+                   if (row := _read_row(path))["project"] == str(workflow.project)
                    and row["board"] == workflow.board), key=lambda row: row["updated_at"], reverse=True)
 
 
@@ -208,7 +216,7 @@ def start(workflow, conversation: str, text: str, context: dict, *, channel: str
     try:
         row = load(workflow, conversation)
         if row.get("kind", "legacy") == "legacy":
-            raise ValueError("历史对话只读，请在项目架构师对话中继续。")
+            raise ValueError("历史对话只读，请在总控台对话中继续。")
         pending_file = directory(workflow, conversation) / "pending.json"
         job = {"input": text, "text": "", "started_at": time.time(), "pid": os.getpid(),
                "channel": channel, "name": name}
@@ -279,7 +287,7 @@ def submit(workflow, conversation: str, objective: str) -> dict:
     with locked(workflow, conversation):
         row = load(workflow, conversation)
         if row.get("kind", "legacy") == "legacy":
-            raise ValueError("历史对话只读，请在项目架构师对话中继续。")
+            raise ValueError("历史对话只读，请在总控台对话中继续。")
         if row["execution_id"] and row.get("kind") != "architect":
             return {"execution_id": row["execution_id"]}
         result = workflow.submit(objective.strip(), "conversation-" + conversation)

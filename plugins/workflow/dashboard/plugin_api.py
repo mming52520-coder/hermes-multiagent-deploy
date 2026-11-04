@@ -101,7 +101,7 @@ def architect_settings(request: Request) -> dict:
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         raise HTTPException(409, str(exc)) from exc
     if importlib.util.find_spec("hermes_cli.provider_catalog") is None:
-        raise HTTPException(409, "项目架构师需要受支持的 Hermes v0.22.5。")
+        raise HTTPException(409, "总控台对话需要受支持的 Hermes v0.22.5。")
     return settings
 
 

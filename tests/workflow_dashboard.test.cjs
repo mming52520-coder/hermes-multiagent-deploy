@@ -1123,14 +1123,19 @@ test("an edited architect draft survives polling and creates only an unapproved 
 
 test("legacy conversations remain read-only and timeline language switches without changing user text", async () => {
   enableArchitect();
+  view.server.architect.items.push({ type: "message", id: 4, role: "assistant", content: "请核对范围。", channel: "web", at: 103 });
   view.server.architect.legacy = [{ id: "d".repeat(32), title: "历史需求" }];
   view.server.conversation = { messages: [{ id: 3, role: "user", content: "原始记录" }] };
   await view.render();
+  assert.equal(view.container.querySelector(".wf-architect h1").textContent, "总控台对话");
+  assert.equal(view.container.querySelector(".wf-architect-conversation").getAttribute("aria-label"), "总控台对话");
+  assert.equal(view.container.querySelector(".wf-chat-assistant small").textContent, "总控台对话");
   await view.click(view.button("历史需求"));
   assert.match(view.container.querySelector(".wf-legacy-messages").textContent, /原始记录/);
   assert.equal(view.container.querySelector(".wf-legacy textarea"), null);
   await view.render("en");
-  assert.equal(view.container.querySelector(".wf-architect h1").textContent, "Project architect");
+  assert.equal(view.container.querySelector(".wf-architect h1").textContent, "Control console chat");
+  assert.equal(view.container.querySelector(".wf-chat-assistant small").textContent, "Control console chat");
   assert.match(view.container.querySelector(".wf-architect-timeline").textContent, /Feishu · 同事甲/);
   assert.match(view.container.querySelector(".wf-architect-timeline").textContent, /导出结果给我/);
   assert.match(view.container.querySelector(".wf-timeline-progress").textContent, /Platform tests passed; independent review started/);

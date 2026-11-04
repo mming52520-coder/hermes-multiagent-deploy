@@ -6,7 +6,7 @@
   const R = SDK.React, h = R.createElement;
   const { useState, useEffect } = R;
   const EN = {
-    "项目架构师": "Project architect",
+    "总控台对话": "Control console chat",
     "任务抽屉": "Task drawer",
     "关闭任务抽屉": "Close task drawer",
     "架构师建议": "Architect recommendation",
@@ -16,8 +16,7 @@
     "查看任务详情": "View task details",
     "提需求、看进展、做决定，都在这段对话里。": "Discuss requirements, follow progress and make decisions in this conversation.",
     "{0} 项待你决定": "{0} decisions need you",
-    "架构师对话": "Architect conversation",
-    "架构师使用 Hermes 主模型。": "The architect uses your Hermes main model.",
+    "总控台对话使用 Hermes 主模型。": "The control console chat uses your Hermes main model.",
     "配置主模型连接": "Configure the main model connection",
     "告诉我你的目标，我会梳理方案、协调研发，并把需要你确认的决定带回这里。": "Tell me your goal. I will plan the work, coordinate development and bring decisions back here.",
     "系统进展": "System progress",
@@ -30,17 +29,16 @@
     "平台测试未通过": "Platform tests failed",
     "需要人工处理": "Operator attention required",
     "飞书 · {0}": "Feishu · {0}",
-    "架构师正在回复…": "The architect is replying…",
-    "与架构师讨论需求": "Discuss requirements with your architect",
-    "描述目标，或询问架构师的建议": "Describe a goal or ask your architect for advice",
+    "在总控台对话中讨论需求": "Discuss requirements in the control console chat",
+    "描述目标，或询问总控台的建议": "Describe a goal or ask the control console for advice",
     "历史对话（只读）": "Previous conversations (read-only)",
     "原因或修改意见": "Reason or requested changes",
     "卡片已过期，请刷新。": "This card has expired. Refresh to see the current decision.",
     "这张卡片不允许此操作。": "This action is unavailable on this card.",
     "这项决策正在处理，请稍候刷新。": "This decision is being processed. Refresh shortly.",
     "请填写原因或修改意见。": "Enter a reason or the requested changes.",
-    "项目架构师需要受支持的 Hermes v0.22.5。": "The project architect requires a supported Hermes v0.22.5 installation.",
-    "历史对话只读，请在项目架构师对话中继续。": "Previous conversations are read-only. Continue with the project architect.",
+    "总控台对话需要受支持的 Hermes v0.22.5。": "The control console chat requires a supported Hermes v0.22.5 installation.",
+    "历史对话只读，请在总控台对话中继续。": "Previous conversations are read-only. Continue in the control console chat.",
     "总控正在回复，请稍候。": "The architect is replying. Please wait.",
     "服务已重启，上一条回复中断；请重新发送。": "The service restarted and interrupted the previous reply. Send your message again.",
     "请核对需求和本轮范围。批准后由后台协调方案、开发、独立测试和审查。": "Check the requirements and scope for this round. Approval starts planning, development, independent tests and review.",
@@ -1200,7 +1198,7 @@
     }
     const items = data?.items || [];
     return h("main", { className: cx("workflow-app wf-architect", drawer && "wf-drawer-open") },
-      h("header", { className: "wf-header" }, h("div", null, h("h1", null, ui("项目架构师")),
+      h("header", { className: "wf-header" }, h("div", null, h("h1", null, ui("总控台对话")),
         h("p", { className: "wf-muted" }, ui("提需求、看进展、做决定，都在这段对话里。"))),
         h("div", { className: "wf-header-actions" },
           h("button", { className: "wf-button", disabled: !data?.pending,
@@ -1211,8 +1209,8 @@
           h("button", { className: "wf-button", "aria-expanded": drawer, onClick: () => setDrawer(value => !value) }, ui("任务")))),
       settings && h(ModelConnections, { execution: "", onConfigured: () => setSettings(false) }),
       h("div", { className: "wf-architect-layout" },
-        h("section", { className: "wf-architect-conversation", "aria-label": ui("架构师对话") },
-          h("p", { className: "wf-model-hint" }, ui("架构师使用 Hermes 主模型。"), " ",
+        h("section", { className: "wf-architect-conversation", "aria-label": ui("总控台对话") },
+          h("p", { className: "wf-model-hint" }, ui("总控台对话使用 Hermes 主模型。"), " ",
             h("a", { href: "/models" }, ui("配置主模型连接"))),
           readError && h("div", { className: "wf-alert", role: "alert" }, ui(readError),
             h("button", { className: "wf-button", onClick: () => readRef.current() }, ui("重新读取"))),
@@ -1224,11 +1222,11 @@
                 onClick: () => openTask(item.execution_id) }, ui("系统进展"), " · ",
                   item.label ? ui("「{0}」{1}", item.objective, ui(item.label)) : ui(item.text))
                 : h("article", { key: "message-" + item.id, className: "wf-chat-message wf-chat-" + item.role },
-                  h("small", null, ui(item.role === "user" ? "你" : "项目架构师"),
+                  h("small", null, ui(item.role === "user" ? "你" : "总控台对话"),
                     item.channel === "feishu" && " · " + ui("飞书 · {0}", item.name)), h("div", null, item.content))),
             pending && !items.some(item => item.type === "message" && item.role === "user" && item.content === pending.input)
               && h("article", { className: "wf-chat-message wf-chat-user" }, pending.input),
-            waiting && h("article", { className: "wf-chat-message wf-chat-assistant", role: "status" }, streamed || ui("架构师正在回复…")),
+            waiting && h("article", { className: "wf-chat-message wf-chat-assistant", role: "status" }, streamed || ui("总控正在回复…")),
             draft && h("section", { className: "wf-task-draft", "aria-label": ui("任务草案") },
               h("h3", null, ui("任务草案")),
               h("textarea", { value: draft, rows: 5, maxLength: 4000, "aria-label": ui("任务草案"), onChange: event => setDraft(event.target.value) }),
@@ -1236,7 +1234,7 @@
           data?.conversation?.error && h("p", { className: "wf-alert", role: "alert" }, ui(data.conversation.error)),
           h("form", { className: "wf-chat-composer", onSubmit: send },
             h("textarea", { value: text, rows: 3, maxLength: 4000, required: true,
-              "aria-label": ui("与架构师讨论需求"), placeholder: ui("描述目标，或询问架构师的建议"), disabled: !meta.actions_enabled,
+              "aria-label": ui("在总控台对话中讨论需求"), placeholder: ui("描述目标，或询问总控台的建议"), disabled: !meta.actions_enabled,
               onChange: event => setText(event.target.value),
               onKeyDown: event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault(); event.currentTarget.form.requestSubmit(); } } }),
@@ -1246,7 +1244,7 @@
               try { setLegacy(await request("/conversations/" + row.id)); } catch (e) { setError(message(e)); }
             } }, row.title)),
             legacy && h("div", { className: "wf-legacy-messages" }, legacy.messages.map(item =>
-              h("p", { key: item.id }, h("strong", null, ui(item.role === "user" ? "你" : "项目架构师")), " · ", item.content))))),
+              h("p", { key: item.id }, h("strong", null, ui(item.role === "user" ? "你" : "总控台对话")), " · ", item.content))))),
         drawer && h(TaskDrawer, { execution, onClose: () => setDrawer(false) })),
       dialog && h("div", { className: "wf-modal-backdrop" },
         h("form", { className: "wf-modal", role: "dialog", "aria-modal": true,
