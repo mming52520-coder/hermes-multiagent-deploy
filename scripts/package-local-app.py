@@ -12,7 +12,7 @@ import tarfile
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 SOURCES = (
-    "plugins/workflow/plugin.yaml", "plugins/workflow/__init__.py",
+    "plugins/workflow/plugin.yaml", "plugins/workflow/__init__.py", "plugins/workflow/feishu_gateway.py",
     "plugins/workflow/dashboard/manifest.json", "plugins/workflow/dashboard/plugin_api.py",
     "plugins/workflow/dashboard/app.js", "plugins/workflow/dashboard/app.css",
     "scripts/install-workflow-app.py", "scripts/workflow_control.py",
@@ -21,6 +21,8 @@ SOURCES = (
     "scripts/workflow_models.py",
     "scripts/workflow_conversation.py", "scripts/workflow_activity.py",
     "scripts/workflow_timeline.py", "scripts/workflow_advisor.py", "scripts/workflow_feishu.py",
+    "scripts/workflow_feishu_client.py", "scripts/configure-feishu-bridge.sh", "scripts/configure_feishu_bridge.py",
+    "tests/test_workflow_feishu.py", "docs/FEISHU_BRIDGE_ZH.md",
     "souls/researcher.md", "souls/builder.md", "souls/tester.md", "souls/reviewer.md", "souls/orchestrator.md",
     "tests/check_workflow_models.py",
     "scripts/dashboard-zh.js", "scripts/package-local-app.py",
@@ -45,6 +47,7 @@ def package(source: Path, output: Path) -> None:
     files = {name: (REPOSITORY / name).read_bytes() for name in SOURCES}
     guide = (REPOSITORY / "docs/LOCAL_HERMES_V0225.md").read_bytes().replace(b"(WORKFLOW_APP_BUTTONS_ZH.md)", b"(docs/WORKFLOW_APP_BUTTONS_ZH.md)")
     guide = guide.replace(b"(API_PROVIDER_DEFAULTS_ZH.md)", b"(docs/API_PROVIDER_DEFAULTS_ZH.md)")
+    guide = guide.replace(b"(FEISHU_BRIDGE_ZH.md)", b"(docs/FEISHU_BRIDGE_ZH.md)")
     files.update({"README.md": guide,
                   "LICENSE": (REPOSITORY / "LICENSE").read_bytes(),
                   "UPSTREAM_LICENSE": (source / "LICENSE").read_bytes()})
@@ -70,7 +73,7 @@ def package(source: Path, output: Path) -> None:
         "hermes_source_commit": "bf0203a794a07aac3ff764972ab9087baa4e4f4e",
         "upstream_frontend_changes": "补齐模型、配置、密钥、频道、系统、自动化模板及弹窗的中文；复用原生 i18n 切换和持久化；工作流同步中英文；完整源码补丁及语言行为测试随包提供",
         "workflow_writes_v0225": "流程v2：审批后由原生owner自动推进开发、独立测试和审查，最终人工确认交付；历史任务继续原规则", "includes_credentials_or_user_state": False,
-        "workflow_frontend_changes": "总控台对话包含多任务时间线、按钮决策、架构师建议、任务抽屉及卡片深链",
+        "workflow_frontend_changes": "总控台为首页及首位对话入口，输入区保持可见；包含多任务时间线、按钮决策、架构师建议、任务抽屉及兼容旧路径的卡片深链",
         "model_connections": "复用 Hermes 原生厂商与凭据接口；可逐角色覆盖；内置官方 API 默认值，导入 Key 后主动刷新模型列表；保存不触发推理",
     }, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     files["MANIFEST.sha256"] = "".join(hashlib.sha256(data).hexdigest() + "  " + name + "\n"

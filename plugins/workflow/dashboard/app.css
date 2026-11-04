@@ -341,11 +341,15 @@
 }
 
 /* Project architect: one conversation, with the existing task views in a drawer. */
-.wf-architect { min-height: calc(100dvh - 130px); }
-.wf-architect > .wf-header { max-width: 1180px; margin: 0 auto 18px; }
+.wf-architect { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; padding: 16px 20px; }
+.wf-architect > .wf-header { width: 100%; max-width: 1180px; flex-shrink: 0; margin: 0 auto 12px; }
 .wf-architect .wf-header .wf-muted { margin: 5px 0 0; }
-.wf-architect-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; max-width: 1180px; margin: 0 auto; }
-.wf-architect-conversation { display: flex; flex-direction: column; min-width: 0; height: calc(100dvh - 245px); min-height: 530px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); padding: 20px; }
+.wf-architect > .wf-model-settings { flex-shrink: 0; max-height: 45%; overflow: auto; }
+.wf-architect-layout { display: grid; flex: 1; min-height: 0; width: 100%; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 20px; max-width: 1180px; margin: 0 auto; }
+.wf-architect-conversation { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); padding: 16px; }
+.wf-architect .wf-chat-composer { display: grid; flex-shrink: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.wf-architect .wf-chat-composer textarea { min-height: 64px; max-height: min(24dvh, 180px); }
+.wf-architect .wf-model-hint { flex-shrink: 0; }
 .wf-model-hint { font-size: var(--fs-xs); color: var(--muted); margin-bottom: 14px !important; }
 .wf-model-hint a { color: var(--accent); text-decoration: underline; }
 .wf-architect-timeline { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 18px; padding: 8px 4px 20px; }
@@ -364,11 +368,11 @@
 .wf-resolved { font-size: var(--fs-xs); }
 .wf-architect-card.highlight { animation: wf-highlight 2s ease-out; outline: 2px solid var(--accent); }
 @keyframes wf-highlight { 0%, 40% { box-shadow: 0 0 0 5px #b9ec8a44; } 100% { box-shadow: none; } }
-.wf-legacy { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; font-size: var(--fs-xs); }
+.wf-legacy { max-height: 25%; overflow: auto; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; font-size: var(--fs-xs); }
 .wf-legacy > button { display: block; margin-top: 8px; }
 .wf-legacy-messages { max-height: 240px; overflow: auto; margin-top: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .wf-legacy-messages p { margin: 8px 0; }
-.wf-task-drawer { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg); overflow: auto; max-height: calc(100dvh - 245px); }
+.wf-task-drawer { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg); overflow: auto; max-height: 100%; }
 .wf-task-drawer > header { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--line); }
 .wf-task-drawer > header h2 { font-size: var(--fs-lg); }
 .wf-task-drawer .workflow-app { padding: 16px; border-radius: 0; }
@@ -385,8 +389,8 @@
   .wf-task-drawer { position: fixed; z-index: 80; right: 0; top: 70px; bottom: 0; width: 420px; max-width: 100vw; max-height: none; box-shadow: -20px 0 60px #0007; }
 }
 @media (max-width: 720px) {
-  .wf-architect { padding: 16px 12px; }
-  .wf-architect-conversation { padding: 12px; height: calc(100dvh - 260px); min-height: 440px; }
+  .wf-architect { padding: 12px 8px; }
+  .wf-architect-conversation { padding: 12px; }
   .wf-architect-card { padding: 14px; }
   .wf-architect .wf-header { gap: 12px; }
   .wf-architect .wf-header-actions { flex-wrap: wrap; }

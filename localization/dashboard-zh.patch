@@ -1,6 +1,105 @@
+--- /dev/null
++++ b/web/src/App.console-entry.test.tsx
+@@ -0,0 +1,73 @@
++// @vitest-environment jsdom
++import { afterEach, beforeEach, expect, it, vi } from "vitest";
++import { act } from "react";
++import { createRoot, type Root } from "react-dom/client";
++import { MemoryRouter, Route, Routes, useLocation } from "react-router";
++import type { PluginManifest } from "@/plugins/types";
++
++const plugins = vi.hoisted(() => ({ loading: false, manifests: [] as PluginManifest[] }));
++const discover = vi.hoisted(() => vi.fn(() => plugins));
++vi.mock("@/plugins", () => ({
++  usePlugins: discover,
++  PluginPage: () => null,
++  PluginSlot: () => null,
++}));
++vi.mock("@/contexts/useProfileScope", () => ({ useProfileScope: () => ({ profile: "default" }) }));
++
++import { PluginRouteAlias, RootRedirect } from "./App";
++
++(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
++let root: Root, container: HTMLDivElement;
++const workflow: PluginManifest = {
++  name: "workflow", label: "总控台对话", description: "", icon: "MessageSquare",
++  version: "0.8.1", tab: { path: "/workflow", override: "/chat" },
++  entry: "app.js", has_api: true, source: "user",
++};
++
++function Location() {
++  const { pathname, search, hash } = useLocation();
++  return <output>{pathname + search + hash}</output>;
++}
++
++async function show(url: string) {
++  await act(async () => root.render(
++    <MemoryRouter initialEntries={[url]}>
++      <Location />
++      <Routes>
++        <Route path="/" element={<RootRedirect {...plugins} />} />
++        <Route path="/workflow" element={<PluginRouteAlias to="/chat" />} />
++        <Route path="*" element={null} />
++      </Routes>
++    </MemoryRouter>,
++  ));
++  return container.querySelector("output")!.textContent;
++}
++
++beforeEach(() => {
++  plugins.loading = false; plugins.manifests = [];
++  discover.mockClear();
++  container = document.createElement("div"); document.body.appendChild(container);
++  root = createRoot(container);
++});
++afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
++
++it("waits for plugin discovery before choosing the home page", async () => {
++  plugins.loading = true;
++  expect(await show("/?profile=default")).toBe("/?profile=default");
++  expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
++});
++
++it("opens the overriding console from home and keeps the selected profile", async () => {
++  plugins.manifests = [workflow];
++  expect(await show("/?profile=default#latest")).toBe("/chat?profile=default#latest");
++  expect(discover).not.toHaveBeenCalled();
++});
++
++it("keeps the native home fallback when no chat override is installed", async () => {
++  expect(await show("/?profile=other")).toBe("/sessions?profile=other");
++});
++
++it("preserves card, execution, profile and fragment on old workflow links", async () => {
++  const suffix = "?profile=default&card=0123456789abcdef&execution=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#decision";
++  expect(await show("/workflow" + suffix)).toBe("/chat" + suffix);
++});
 --- a/web/src/App.tsx
 +++ b/web/src/App.tsx
-@@ -192,7 +192,7 @@
+@@ -125,8 +125,20 @@
+   );
+ }
+ 
+-function RootRedirect() {
+-  return <Navigate to="/sessions" replace />;
++export function RootRedirect({ manifests = [], loading = false }: {
++  manifests?: PluginManifest[];
++  loading?: boolean;
++} = {}) {
++  const location = useLocation();
++  if (loading) return <RouteFallback />;
++  const pathname = manifests.some((m) => m.tab.override === "/chat")
++    ? "/chat" : "/sessions";
++  return <Navigate to={{ pathname, search: location.search, hash: location.hash }} replace />;
++}
++
++export function PluginRouteAlias({ to }: { to: string }) {
++  const { search, hash } = useLocation();
++  return <Navigate to={{ pathname: to, search, hash }} replace />;
+ }
+ 
+ function UnknownRouteFallback({ pluginsLoading }: { pluginsLoading: boolean }) {
+@@ -192,7 +204,7 @@
      label: "Sessions",
      icon: MessageSquare,
    },
@@ -9,7 +108,7 @@
    {
      path: "/analytics",
      labelKey: "analytics",
-@@ -209,14 +209,14 @@
+@@ -209,14 +221,14 @@
    { path: "/cron", labelKey: "cron", label: "Cron", icon: Clock },
    { path: "/skills", labelKey: "skills", label: "Skills", icon: Package },
    { path: "/plugins", labelKey: "plugins", label: "Plugins", icon: Puzzle },
@@ -29,15 +128,65 @@
    {
      path: "/docs",
      labelKey: "documentation",
-@@ -268,6 +268,7 @@
+@@ -262,14 +274,20 @@
+   const items = [...builtIn];
+ 
+   for (const manifest of manifests) {
+-    if (manifest.tab.override) continue;
+     if (manifest.tab.hidden) continue;
+ 
      const pluginItem: NavItem = {
-       path: manifest.tab.path,
+-      path: manifest.tab.path,
++      path: manifest.tab.override ?? manifest.tab.path,
        label: manifest.label,
 +      labelKey: ({ kanban: "kanban", "hermes-achievements": "achievements", workflow: "workflow" } as Record<string, string>)[manifest.name],
        icon: resolveIcon(manifest.icon),
      };
++
++    if (manifest.tab.override) {
++      const idx = items.findIndex((item) => item.path === manifest.tab.override);
++      if (idx >= 0) items[idx] = pluginItem;
++      continue;
++    }
  
-@@ -372,7 +373,7 @@
+     const pos = manifest.tab.position ?? "end";
+     if (pos === "end") {
+@@ -309,6 +327,7 @@
+ function buildRoutes(
+   builtinRoutes: Record<string, ComponentType>,
+   manifests: PluginManifest[],
++  pluginsLoading: boolean,
+ ): Array<{
+   key: string;
+   path: string;
+@@ -340,7 +359,8 @@
+         element: <PluginPage name={om.name} />,
+       });
+     } else {
+-      routes.push({ key: `builtin:${path}`, path, element: <Component /> });
++      routes.push({ key: `builtin:${path}`, path, element: path === "/"
++        ? <RootRedirect manifests={manifests} loading={pluginsLoading} /> : <Component /> });
+     }
+   }
+ 
+@@ -355,6 +375,16 @@
+     });
+   }
+ 
++  // Keep existing plugin links usable when a tab takes over a built-in page.
++  for (const m of byOverride.values()) {
++    if (m.tab.path === m.tab.override || m.tab.path === "/plugins" || builtinRoutes[m.tab.path]) continue;
++    routes.push({
++      key: `alias:${m.name}`,
++      path: m.tab.path,
++      element: <PluginRouteAlias to={m.tab.override!} />,
++    });
++  }
++
+   for (const m of manifests) {
+     if (!m.tab.hidden) continue;
+     if (m.tab.path === "/plugins") continue;
+@@ -372,7 +402,7 @@
  const SIDEBAR_COLLAPSED_KEY = "hermes-sidebar-collapsed";
  
  export default function App() {
@@ -46,7 +195,30 @@
    const { pathname } = useLocation();
    const { profile } = useProfileScope();
    const { manifests, loading: pluginsLoading } = usePlugins(profile);
-@@ -620,8 +621,7 @@
+@@ -473,8 +503,8 @@
+     [builtinNav, manifests],
+   );
+   const routes = useMemo(
+-    () => buildRoutes(builtinRoutes, manifests),
+-    [builtinRoutes, manifests],
++    () => buildRoutes(builtinRoutes, manifests, pluginsLoading),
++    [builtinRoutes, manifests, pluginsLoading],
+   );
+   const pluginTabMeta = useMemo(
+     () =>
+@@ -482,9 +512,9 @@
+         .filter((m) => !m.tab.hidden)
+         .map((m) => ({
+           path: m.tab.override ?? m.tab.path,
+-          label: m.label,
++          label: m.name === "workflow" ? (t.app.nav.workflow ?? m.label) : m.label,
+         })),
+-    [manifests],
++    [manifests, t.app.nav.workflow],
+   );
+ 
+   const layoutVariant = theme.layoutVariant ?? "standard";
+@@ -620,8 +650,7 @@
                  <Typography className="font-bold text-[1.125rem] leading-[0.95] tracking-[0.0525rem] text-midground uppercase">
                    Hermes
                    <br />
@@ -56,7 +228,7 @@
                </div>
  
                <Button
-@@ -730,7 +730,7 @@
+@@ -730,7 +759,7 @@
  
                  <SidebarIconWithTooltip
                    collapsed={isDesktopCollapsed}
@@ -65,7 +237,7 @@
                    tooltipWarmRef={tooltipWarmRef}
                  >
                    <ThemeSwitcher collapsed={isDesktopCollapsed} dropUp />
-@@ -798,7 +798,7 @@
+@@ -798,7 +827,7 @@
                    !chatOverriddenByPlugin &&
                    (pluginsLoading ? (
                      isChatRoute ? (
@@ -74,7 +246,7 @@
                      ) : null
                    ) : chatHostMounted ? (
                      <div
-@@ -812,7 +812,7 @@
+@@ -812,7 +841,7 @@
                        <Suspense
                          fallback={
                            isChatRoute ? (
@@ -83,7 +255,7 @@
                            ) : null
                          }
                        >
-@@ -820,7 +820,7 @@
+@@ -820,7 +849,7 @@
                        </Suspense>
                      </div>
                    ) : isChatRoute ? (
@@ -92,7 +264,7 @@
                    ) : null)}
                </div>
                <PluginSlot name="post-main" />
-@@ -941,7 +941,7 @@
+@@ -941,7 +970,7 @@
    status,
    tooltipWarmRef,
  }: SidebarSystemActionsProps) {
@@ -101,7 +273,7 @@
    const navigate = useNavigate();
    const { activeAction, isBusy, isRunning, pendingAction, runAction } =
      useSystemActions();
-@@ -1081,7 +1081,7 @@
+@@ -1081,7 +1110,7 @@
  
      <ConfirmDialog
        cancelLabel={t.common.cancel}
@@ -110,7 +282,7 @@
        description={
          sharedGateway
            ? sharedGatewayRestartDescription(sharedGateway)
-@@ -1094,14 +1094,14 @@
+@@ -1094,14 +1123,14 @@
        open={restartConfirmOpen}
        title={
          sharedGateway
@@ -2364,7 +2536,7 @@
      },
      nav: {
 +      mcp: "MCP servers",
-+      workflow: "Workflow",
++      workflow: "Control console chat",
        analytics: "Analytics",
        chat: "Chat",
        config: "Config",
@@ -4893,7 +5065,7 @@
      },
      nav: {
 +      mcp: "MCP 服务",
-+      workflow: "工作流",
++      workflow: "总控台对话",
 +      files: "文件",
 +      channels: "频道",
 +      webhooks: "事件回调",
@@ -5269,6 +5441,18 @@
 +    docsUrl: "https://docs.x.ai/developers/rest-api-reference/inference/responses",
 +  },
 +};
+--- a/web/src/lib/resolve-page-title.test.ts
++++ b/web/src/lib/resolve-page-title.test.ts
+@@ -33,6 +33,9 @@
+     expect(
+       resolvePageTitle("/kanban", t, [{ path: "/kanban", label: "Kanban" }]),
+     ).toBe("Kanban");
++    expect(
++      resolvePageTitle("/chat", t, [{ path: "/chat", label: "总控台对话" }]),
++    ).toBe("总控台对话");
+   });
+ 
+   it("falls back to capitalized path segment for unknown routes", () => {
 --- a/web/src/lib/resolve-page-title.ts
 +++ b/web/src/lib/resolve-page-title.ts
 @@ -2,9 +2,15 @@
@@ -12301,3 +12485,31 @@
                    onClick={() => webhookDelete.requestDelete(sub.name)}
                  >
                    <Trash2 />
+--- a/web/src/plugins/usePlugins.test.ts
++++ b/web/src/plugins/usePlugins.test.ts
+@@ -58,6 +58,13 @@
+   });
+ 
+   it("getCachedManifests returns null when nothing is cached", () => {
++    expect(getCachedManifests("default")).toBeNull();
++  });
++
++  it("rediscovers plugins after the console entry upgrade instead of seeding the old routing cache", () => {
++    storage.setItem("hermes:plugin-manifests:default", JSON.stringify([
++      { ...exampleManifest, name: "workflow", version: "0.8.0", tab: { path: "/workflow" } },
++    ]));
+     expect(getCachedManifests("default")).toBeNull();
+   });
+ 
+--- a/web/src/plugins/usePlugins.ts
++++ b/web/src/plugins/usePlugins.ts
+@@ -25,7 +25,8 @@
+   setPluginLoadError,
+ } from "./registry";
+ 
+-export const MANIFEST_CACHE_KEY = "hermes:plugin-manifests";
++// Rediscover route overrides once when upgrading from the separate workflow tab.
++export const MANIFEST_CACHE_KEY = "hermes:plugin-manifests:v2";
+ 
+ /** One profile's cached list: another profile's never seeds it. */
+ function manifestCacheKey(profile: string): string {

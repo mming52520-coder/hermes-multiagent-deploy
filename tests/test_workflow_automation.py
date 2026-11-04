@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 
 FILE = Path(__file__).resolve().parents[1] / "plugins/workflow/__init__.py"
@@ -62,9 +62,10 @@ class WorkflowAutomationTest(unittest.TestCase):
         ctx = SimpleNamespace(register_hook=Mock())
         with patch.object(self.plugin, "_on_dispatch_tick") as tick:
             self.plugin.register(ctx)
-            ctx.register_hook.assert_called_once_with("on_kanban_dispatch_tick", tick)
+            self.assertEqual(ctx.register_hook.call_args_list, [call("on_kanban_dispatch_tick", tick),
+                call("pre_gateway_dispatch", self.plugin._on_gateway_dispatch)])
             tick.assert_not_called()
-            ctx.register_hook.call_args.args[1](board="default")
+            ctx.register_hook.call_args_list[0].args[1](board="default")
             tick.assert_called_once_with(board="default")
 
     def test_foreign_home_dispatch_cannot_advance_the_installed_workflow(self):

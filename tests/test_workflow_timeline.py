@@ -212,6 +212,29 @@ class TimelineTest(unittest.TestCase):
             self.assertEqual(advisor.advise(self.workflow, execution)["source"], "rule")
         self.assertNotIn("advice", self.workflow.load(execution))
 
+    def test_current_revision_reaches_advice_and_architect_conversation(self):
+        _, advisor, row, execution, _ = self.prepare()
+        manifest = self.workflow.load(execution)
+        request = {"kind": "implementation", "reason": "Add the parser required in this round", "requested_by": "customer"}
+        manifest["rounds"].append({**manifest["rounds"][-1], "number": 1})
+        manifest["failures"].append(request)
+        self.workflow.save(manifest)
+        contexts = []
+        class Agent:
+            def run_conversation(self, text, **kwargs):
+                contexts.append(json.loads(text))
+                return {"final_response": '{"reply":"按本轮修改意见核对解析功能。","objective":null}'}
+            def close(self): pass
+        with patch.object(self.controller, "make_agent", return_value=Agent()):
+            self.assertEqual(advisor.advise(self.workflow, execution)["source"], "model")
+        self.assertEqual(contexts[0]["current_request"], request)
+        with patch.object(self.controller, "start", return_value={"status": "running"}) as start:
+            result = self.client.post(self.url + "/architect/messages", json={"message": "本轮需要验收什么？"})
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertEqual(start.call_args.args[-1]["tasks"][0]["current_request"], request)
+        self.assertEqual(self.workflow.load(execution)["workflow_state"], "WAITING_APPROVAL")
+        self.assertFalse(self.workflow.load(execution)["approved_write"])
+
 
     def test_recommendation_timeout_returns_rules_and_interrupts_its_own_agent(self):
         _, advisor, _, execution, _ = self.prepare()
