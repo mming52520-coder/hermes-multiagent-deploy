@@ -12,7 +12,7 @@ import tarfile
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 SOURCES = (
-    "plugins/workflow/plugin.yaml", "plugins/workflow/__init__.py",
+    "plugins/workflow/plugin.yaml", "plugins/workflow/__init__.py", "plugins/workflow/feishu_gateway.py",
     "plugins/workflow/dashboard/manifest.json", "plugins/workflow/dashboard/plugin_api.py",
     "plugins/workflow/dashboard/app.js", "plugins/workflow/dashboard/app.css",
     "scripts/install-workflow-app.py", "scripts/workflow_control.py",
@@ -21,6 +21,8 @@ SOURCES = (
     "scripts/workflow_models.py",
     "scripts/workflow_conversation.py", "scripts/workflow_activity.py",
     "scripts/workflow_timeline.py", "scripts/workflow_advisor.py", "scripts/workflow_feishu.py",
+    "scripts/workflow_feishu_client.py", "scripts/configure-feishu-bridge.sh", "scripts/configure_feishu_bridge.py",
+    "tests/test_workflow_feishu.py", "docs/FEISHU_BRIDGE_ZH.md",
     "souls/researcher.md", "souls/builder.md", "souls/tester.md", "souls/reviewer.md", "souls/orchestrator.md",
     "tests/check_workflow_models.py",
     "scripts/dashboard-zh.js", "scripts/package-local-app.py",
@@ -45,6 +47,7 @@ def package(source: Path, output: Path) -> None:
     files = {name: (REPOSITORY / name).read_bytes() for name in SOURCES}
     guide = (REPOSITORY / "docs/LOCAL_HERMES_V0225.md").read_bytes().replace(b"(WORKFLOW_APP_BUTTONS_ZH.md)", b"(docs/WORKFLOW_APP_BUTTONS_ZH.md)")
     guide = guide.replace(b"(API_PROVIDER_DEFAULTS_ZH.md)", b"(docs/API_PROVIDER_DEFAULTS_ZH.md)")
+    guide = guide.replace(b"(FEISHU_BRIDGE_ZH.md)", b"(docs/FEISHU_BRIDGE_ZH.md)")
     files.update({"README.md": guide,
                   "LICENSE": (REPOSITORY / "LICENSE").read_bytes(),
                   "UPSTREAM_LICENSE": (source / "LICENSE").read_bytes()})

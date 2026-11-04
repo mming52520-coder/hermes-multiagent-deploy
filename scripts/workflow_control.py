@@ -22,11 +22,11 @@ import time
 if __package__:
     from .configure_profiles import load_env_file, read_yaml, worker_mounts, write_yaml
     from .hermes_baseline import verify_workflow_source as verify_source
-    from . import workflow_runtime, workflow_policy, workflow_notify
+    from . import workflow_runtime, workflow_policy, workflow_notify, workflow_feishu
 else:
     from configure_profiles import load_env_file, read_yaml, worker_mounts, write_yaml
     from hermes_baseline import verify_workflow_source as verify_source
-    import workflow_runtime, workflow_policy, workflow_notify
+    import workflow_runtime, workflow_policy, workflow_notify, workflow_feishu
 
 LEGACY_ROLES = ("researcher", "builder", "reviewer", "orchestrator")
 ROLES = ("researcher", "builder", "tester", "reviewer")
@@ -365,7 +365,13 @@ class Workflow:
             self.save(manifest)
             previous = tid
 
-    def submit(self, objective: str, instance: str = "") -> dict:
+    def submit(self, objective: str, instance: str = "", *, notify: bool = True) -> dict:
+        manifest = self._submit(objective, instance)
+        if notify and self.modern(manifest):
+            workflow_feishu.sync_progress(self, manifest["execution_id"])
+        return manifest
+
+    def _submit(self, objective: str, instance: str) -> dict:
         for key in ("OUTPUT_DIR", "DOCKER_IMAGE"):
             if not self.env.get(key):
                 raise Rejected(f"项目绑定配置缺少 {key}")
@@ -1025,10 +1031,14 @@ class Workflow:
         result = self._advance(execution, runner)
         if result.get("state") in self.DECISION_STATES:
             self.notify(execution)
+        elif self.env.get("WORKFLOW_FEISHU_CHAT_ID"):
+            workflow_feishu.sync_progress(self, execution)
         return result
 
     def notify(self, execution: str, opener=None) -> dict | None:
         """Push one card per decision point; never blocks or fails the workflow."""
+        if workflow_feishu.sync_progress(self, execution):
+            return None
         if not workflow_notify.configured(self.env):
             return None
         if __package__:

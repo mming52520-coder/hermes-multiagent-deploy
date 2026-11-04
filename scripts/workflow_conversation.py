@@ -239,6 +239,7 @@ def start(workflow, conversation: str, text: str, context: dict, *, channel: str
     def run():
         agent = db = None
         persisted = False
+        reply = card_id = None
         try:
             with workflow_runtime.home_scope(workflow.root):
                 from hermes_state_registry import acquire, release
@@ -256,10 +257,12 @@ def start(workflow, conversation: str, text: str, context: dict, *, channel: str
                 if result.get("error"):
                     raise ValueError(str(result["error"]))
                 response = decode(result.get("final_response", ""))
+                reply = response["reply"]
                 if response["objective"]:
                     row["objective"] = response["objective"]
                 if response.get("card_id") in {card["card_id"] for card in context.get("cards", [])}:
-                    row["highlight"] = {"card_id": response["card_id"], "at": time.time()}
+                    card_id = response["card_id"]
+                    row["highlight"] = {"card_id": card_id, "at": time.time()}
                 row.update(status="idle", error="", session_id=agent.session_id)
         except Exception as exc:
             row.update(status="failed", error=str(exc))
@@ -278,6 +281,12 @@ def start(workflow, conversation: str, text: str, context: dict, *, channel: str
                 if persisted:
                     pending_file.unlink(missing_ok=True)
                 guard.__exit__(None, None, None)
+        if persisted and row.get("kind") == "architect" and workflow.env.get("WORKFLOW_FEISHU_CHAT_ID"):
+            if __package__:
+                from .workflow_feishu import mirror_turn
+            else:
+                from workflow_feishu import mirror_turn
+            mirror_turn(workflow, row, channel, text, reply, card_id, job["started_at"])
 
     threading.Thread(target=run, name="workflow-controller-" + conversation[:8], daemon=True).start()
     return {"id": conversation, "status": "running"}
@@ -290,11 +299,18 @@ def submit(workflow, conversation: str, objective: str) -> dict:
             raise ValueError("历史对话只读，请在总控台对话中继续。")
         if row["execution_id"] and row.get("kind") != "architect":
             return {"execution_id": row["execution_id"]}
-        result = workflow.submit(objective.strip(), "conversation-" + conversation)
+        result = workflow.submit(objective.strip(), "conversation-" + conversation, notify=False)
         row.update(execution_id=result["execution_id"], objective=objective.strip())
         if row.get("kind") == "architect":
             if result["execution_id"] not in row["execution_ids"]:
                 row["execution_ids"].append(result["execution_id"])
             row["submitted_objective"] = objective.strip()
         save(workflow, row)
-        return {"execution_id": row["execution_id"]}
+    # Send the card only after its web conversation can already resolve the deep link.
+    if workflow.env.get("WORKFLOW_FEISHU_CHAT_ID"):
+        if __package__:
+            from .workflow_feishu import sync_progress
+        else:
+            from workflow_feishu import sync_progress
+        sync_progress(workflow, result["execution_id"])
+    return {"execution_id": row["execution_id"]}

@@ -1,6 +1,7 @@
 """Advance approved workflows from the native owner's dispatch lifecycle."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import importlib
 import json
@@ -37,6 +38,10 @@ def _advance_pending(board=None):
     with core.workflow_runtime.home_scope(workflow.root):
         for file in sorted((workflow.root / "workflow" / "executions").glob("*/execution.json")):
             manifest = json.loads(file.read_text(encoding="utf-8"))
+            if (env.get("WORKFLOW_FEISHU_CHAT_ID") and manifest.get("workflow_version", 1) >= 2
+                    and manifest.get("project") == str(workflow.project) and manifest.get("board") == workflow.board
+                    and (manifest.get("workflow_state") not in {"ACCEPTED", "REJECTED"} or manifest.get("feishu_sync"))):
+                core.workflow_feishu.sync_progress(workflow, manifest["execution_id"])
             if manifest.get("workflow_version", 1) < 2 or not manifest.get("approved_write"):
                 continue
             if manifest.get("workflow_state") in {"READY_FOR_ACCEPTANCE", "ACCEPTED", "REPAIR_REQUIRED", "HUMAN_REQUIRED", "REJECTED"}:
@@ -70,5 +75,14 @@ def _on_dispatch_tick(*, board=None, dry_run=False, **_kwargs):
     threading.Thread(target=advance, name="workflow-advance", daemon=True).start()
 
 
+async def _on_gateway_dispatch(*, event, gateway=None, **_kwargs):
+    platform = getattr(getattr(event, "source", None), "platform", None)
+    if getattr(platform, "value", platform) != "feishu":
+        return None
+    from .feishu_gateway import dispatch
+    return await asyncio.to_thread(dispatch, event, gateway)
+
+
 def register(ctx):
     ctx.register_hook("on_kanban_dispatch_tick", _on_dispatch_tick)
+    ctx.register_hook("pre_gateway_dispatch", _on_gateway_dispatch)

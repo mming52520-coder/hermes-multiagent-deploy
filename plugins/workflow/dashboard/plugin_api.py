@@ -152,11 +152,16 @@ def architect_task(request: Request, body: Submission):
 
 @router.post("/architect/decisions")
 def architect_decision(request: Request, body: ArchitectDecision):
-    settings = architect_settings(request)
+    return decide(architect_settings(request), body, by="web", name="你")
+
+
+def decide(settings: dict, body: ArchitectDecision, *, by: str, name: str, execution_id: str | None = None):
     workflow = bound_workflow(settings)
     row = conversations_module().architect(workflow, create_missing=False)
     module = timeline_module()
     for execution in (row or {}).get("execution_ids", []):
+        if execution_id is not None and execution_id != execution:
+            continue
         with workflow.locked(execution):
             manifest = workflow.load(execution)
             card = module.card_for(manifest, module.task_states(workflow, manifest))
@@ -180,10 +185,10 @@ def architect_decision(request: Request, body: ArchitectDecision):
         try:
             parameters = Action(confirmed=True, round_number=card["round"], reason=body.reason,
                                 **(card.get("retry") or {}))
-            result = perform(settings, execution, body.action, parameters, by="web", name="你", expected_card=card)
+            result = perform(settings, execution, body.action, parameters, by=by, name=name, expected_card=card)
             if body.action in {"repair", "request-changes"}:
                 result = perform(settings, execution, "approve",
-                                 Action(confirmed=True, round_number=result["round_number"]), by="web", name="你")
+                                 Action(confirmed=True, round_number=result["round_number"]), by=by, name=name)
             return result
         except (ValueError, OSError, sqlite3.Error, subprocess.SubprocessError) as exc:
             raise HTTPException(409, str(exc)) from exc
@@ -193,6 +198,7 @@ def architect_decision(request: Request, body: ArchitectDecision):
                 if manifest.get("decision_claim", {}).get("card_id") == body.card_id:
                     manifest.pop("decision_claim", None)
                     workflow.save(manifest)
+            core_module().workflow_feishu.sync_progress(workflow, execution)
     raise HTTPException(409, "卡片已过期，请刷新。")
 
 
@@ -654,7 +660,11 @@ def require_action(request: Request, settings: dict, confirmed: bool = True) -> 
         raise HTTPException(403, "操作必须来自当前应用。")
     if not confirmed:
         raise HTTPException(400, "请先确认这次操作及其影响范围。")
-    # Match the CLI's provenance gate; do not relax P0 just because it has a UI.
+    verify_operator_source(settings)
+
+
+def verify_operator_source(settings: dict) -> None:
+    # Both transports must verify the same installed Hermes source before operator writes.
     from hermes_cli import kanban_db as kb
     core = core_module()
     archive = settings.get("baseline_archive")
