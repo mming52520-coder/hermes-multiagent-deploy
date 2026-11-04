@@ -149,7 +149,21 @@ class Workflow:
         return manifest
 
     def save(self, manifest: dict) -> None:
-        write_json(self.path(manifest["execution_id"]) / "execution.json", manifest)
+        path = self.path(manifest["execution_id"]) / "execution.json"
+        try:
+            previous = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            previous = {}
+        manifest["transitions"] = list(previous.get("transitions", []))
+        if previous.get("workflow_state") != manifest.get("workflow_state"):
+            transition = {"from": previous.get("workflow_state"), "to": manifest.get("workflow_state"),
+                          "round": manifest["rounds"][-1]["number"], "at": time.time()}
+            if transition["to"] == "REPAIR_REQUIRED":
+                receipt = self.path(manifest["execution_id"]) / f"round-{transition['round']}" / "platform-verification.json"
+                if receipt.is_file():
+                    transition["verification"] = json.loads(receipt.read_text()).get("status")
+            manifest["transitions"].append(transition)
+        write_json(path, manifest)
 
     @staticmethod
     def roles(manifest: dict | None = None) -> tuple[str, ...]:
@@ -901,9 +915,14 @@ class Workflow:
             self.save(manifest)
         return result
 
-    def accept(self, execution: str, note: str = "") -> dict:
+    def accept(self, execution: str, note: str = "", *, expected_round: int | None = None,
+               expected_candidate: str | None = None) -> dict:
         with self.locked(execution), workflow_runtime.connect_closing(board=self.board) as conn:
             manifest = self.load(execution)
+            if expected_round is not None and manifest["rounds"][-1]["number"] != expected_round:
+                raise Rejected("ROUND_CHANGED")
+            if expected_candidate is not None and manifest["rounds"][-1].get("candidate_digest") != expected_candidate:
+                raise Rejected("卡片已过期，请重新核对交付内容。")
             result = self.record_acceptance(manifest, conn)
             reasons = [item for item in manifest.get("decision", {}).get("reasons", [])
                        if item["category"] != "未开启自动验收"]
@@ -915,12 +934,14 @@ class Workflow:
                     text=(note.strip() or "确认交付") + (f"\n（批准的改动：{summary}）" if summary else ""))
             return result
 
-    def reject(self, execution: str, reason: str) -> dict:
+    def reject(self, execution: str, reason: str, *, expected_round: int | None = None) -> dict:
         """The human decided not to do this. Record it so it is not raised again."""
         if not reason.strip():
             raise Rejected("请写明不做的原因，之后遇到同类请求会按此回答。")
         with self.locked(execution), workflow_runtime.connect_closing(board=self.board) as conn:
             manifest = self.load(execution)
+            if expected_round is not None and manifest["rounds"][-1]["number"] != expected_round:
+                raise Rejected("ROUND_CHANGED")
             if (self.path(execution) / "acceptance.json").exists():
                 raise Rejected("已验收任务不能再标记为不做。")
             if any(self.kb.get_task(conn, tid).status == "running" for tid in manifest["rounds"][-1]["tasks"].values()):
@@ -1010,6 +1031,11 @@ class Workflow:
         """Push one card per decision point; never blocks or fails the workflow."""
         if not workflow_notify.configured(self.env):
             return None
+        if __package__:
+            from . import workflow_advisor, workflow_timeline
+        else:
+            import workflow_advisor, workflow_timeline
+        advice = workflow_advisor.advise(self, execution)
         with self.locked(execution):
             manifest = self.load(execution)
             state, row = manifest.get("workflow_state"), manifest["rounds"][-1]
@@ -1025,6 +1051,8 @@ class Workflow:
                      "recommendation": {"READY_FOR_ACCEPTANCE": "测试与审查已通过，建议确认交付；请核对下列需要你决定的改动。",
                                         "REPAIR_REQUIRED": "按审查发现的阻断问题再修一轮。",
                                         "HUMAN_REQUIRED": "有角色被阻塞或执行环境未就绪，需要你检查。"}[state]}
+            card = workflow_timeline.card_for(manifest, {})
+            event.update(card_id=card["card_id"] if card else "", recommendation=advice["text"])
         # Network call happens outside the execution lock.
         status = workflow_notify.send(self.env, event, **({"opener": opener} if opener else {}))
         with self.locked(execution):
@@ -1191,13 +1219,15 @@ class Workflow:
                                             objective=manifest["objective"], text="要求修改：" + reason.strip())
             return manifest
 
-    def repair(self, execution: str, kind: str, reason: str) -> dict:
+    def repair(self, execution: str, kind: str, reason: str, *, expected_round: int | None = None) -> dict:
         if kind not in FAILURE_KINDS or not reason.strip():
             raise Rejected("a classified, concrete failure reason is required")
         if kind not in {"implementation","test"}:
             raise Rejected(f"HUMAN_REQUIRED: {kind}; automatic code repair is inappropriate")
         with self.locked(execution), workflow_runtime.connect_closing(board=self.board) as conn:
             manifest = self.load(execution)
+            if expected_round is not None and manifest["rounds"][-1]["number"] != expected_round:
+                raise Rejected("ROUND_CHANGED")
             self.budget(manifest, conn, new_work=True)
             row = manifest["rounds"][-1]
             if any(self.kb.get_task(conn,tid).status == "running" for r in manifest["rounds"] for tid in r["tasks"].values()):

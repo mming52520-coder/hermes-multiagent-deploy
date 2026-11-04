@@ -6,6 +6,46 @@
   const R = SDK.React, h = R.createElement;
   const { useState, useEffect } = R;
   const EN = {
+    "总控台对话": "Control console chat",
+    "任务抽屉": "Task drawer",
+    "关闭任务抽屉": "Close task drawer",
+    "架构师建议": "Architect recommendation",
+    "已由 {0} 于 {1} 在{2}{3}": "{0} chose {3} on {2} at {1}",
+    "飞书": "Feishu",
+    "网页": "web",
+    "查看任务详情": "View task details",
+    "提需求、看进展、做决定，都在这段对话里。": "Discuss requirements, follow progress and make decisions in this conversation.",
+    "{0} 项待你决定": "{0} decisions need you",
+    "总控台对话使用 Hermes 主模型。": "The control console chat uses your Hermes main model.",
+    "配置主模型连接": "Configure the main model connection",
+    "告诉我你的目标，我会梳理方案、协调研发，并把需要你确认的决定带回这里。": "Tell me your goal. I will plan the work, coordinate development and bring decisions back here.",
+    "系统进展": "System progress",
+    "「{0}」{1}": "“{0}” {1}",
+    "开始方案": "Planning started",
+    "方案完成，开发与独立测试并行": "Planning completed; development and independent tests run in parallel",
+    "核对平台验证": "Checking platform verification",
+    "平台测试通过，开始独立审查": "Platform tests passed; independent review started",
+    "审查发现阻断问题": "Review found blocking issues",
+    "平台测试未通过": "Platform tests failed",
+    "需要人工处理": "Operator attention required",
+    "飞书 · {0}": "Feishu · {0}",
+    "在总控台对话中讨论需求": "Discuss requirements in the control console chat",
+    "描述目标，或询问总控台的建议": "Describe a goal or ask the control console for advice",
+    "历史对话（只读）": "Previous conversations (read-only)",
+    "原因或修改意见": "Reason or requested changes",
+    "卡片已过期，请刷新。": "This card has expired. Refresh to see the current decision.",
+    "这张卡片不允许此操作。": "This action is unavailable on this card.",
+    "这项决策正在处理，请稍候刷新。": "This decision is being processed. Refresh shortly.",
+    "请填写原因或修改意见。": "Enter a reason or the requested changes.",
+    "总控台对话需要受支持的 Hermes v0.22.5。": "The control console chat requires a supported Hermes v0.22.5 installation.",
+    "历史对话只读，请在总控台对话中继续。": "Previous conversations are read-only. Continue in the control console chat.",
+    "总控正在回复，请稍候。": "The architect is replying. Please wait.",
+    "服务已重启，上一条回复中断；请重新发送。": "The service restarted and interrupted the previous reply. Send your message again.",
+    "请核对需求和本轮范围。批准后由后台协调方案、开发、独立测试和审查。": "Check the requirements and scope for this round. Approval starts planning, development, independent tests and review.",
+    "项目测试、独立测试和独立审查已通过，请核对交付及需要你决定的改动。": "Project tests, independent tests and review passed. Check the delivery and changes requiring your decision.",
+    "本轮验证或审查未通过，建议按具体问题批准下一轮修复。": "Verification or review failed. Consider a repair round addressing the reported issues.",
+    "已达到本任务的整改上限，请人工核对记录后决定不做。": "This task reached its repair limit. Review the evidence before rejecting the task.",
+    "角色被阻塞或运行环境未就绪，请先查看任务抽屉中的原因。": "An agent is blocked or the runtime is not ready. See the task drawer for details.",
     "总控对话": "Controller chat",
     "描述需求，或询问当前任务的进展": "Describe a requirement or ask about this task",
     "与总控讨论需求": "Discuss a task with the controller",
@@ -47,7 +87,6 @@
     "批准修改并执行": "Approve and run changes",
     "重试失败角色": "Retry failed agent",
     "执行中断": "Run interrupted",
-    "执行失败": "Run failed",
     "已安排重试": "Retry scheduled",
     "保留失败记录并按原需求重试当前角色。": "Keep the failed run and retry this agent with the approved request.",
     "你": "You",
@@ -74,7 +113,6 @@
     "继续执行": "Continue",
     "继续执行当前任务。": "Continue the current task.",
     "等待确认交付": "Awaiting delivery approval",
-    "等待确认需求": "Awaiting request approval",
     "独立测试验收": "Independent acceptance tests",
     "方案 → 开发与独立测试 → 独立审查": "Plan → Build and independent testing → Independent review",
     "批准后自动开发、测试和审查，完成后由你确认交付。": "Approval starts development, testing and review. You confirm the final delivery.",
@@ -519,7 +557,27 @@
     "验证期间候选内容发生变化，本次证据不可用于验收。": "The candidate changed during verification. This evidence cannot be accepted.",
     "验证记录失败、已过期或被改动，不能用于验收。": "The verification record failed, expired or changed and cannot be accepted.",
     "默认看板": "Default board",
-    "＋ 新建目标": "＋ New objective"
+    "＋ 新建目标": "＋ New objective",
+    "{0} 项待你处理": "{0} need you",
+    "决定于 {0}": "Decided {0}",
+    "独立审查发现 {0} 个阻断问题，填写修改意见后开始第 {1} 轮（共 {2} 轮）。": "The review found {0} blocker(s). Describe the changes to start round {1} of {2}.",
+    "平台测试未通过，填写修改意见后开始第 {0} 轮（共 {1} 轮）。": "Platform tests failed. Describe the changes to start round {0} of {1}.",
+    "整改轮次已用完": "Repair rounds used up",
+    "已用完 {0} 轮整改。可以手动修改后新建任务，或决定不做。": "All {0} repair rounds are used. Fix it manually and create a new task, or decide not to do it.",
+    "{0}中断（{1}），可保留失败记录后重试。": "{0} stopped ({1}). You can retry and keep the failed run.",
+    "{0}被阻塞，请在「工作过程」查看原因。": "{0} is blocked. See Work activity for the reason.",
+    "执行环境未就绪，补齐下列检查项后点击「继续执行」。": "The runtime is not ready. Fix the checks below, then select Continue.",
+    "任务暂停等待你检查，确认无误后继续执行。": "The task paused for your check. Continue when ready.",
+    "批准后自动执行，测试和审查通过后再请你确认交付。": "After approval it runs automatically; you confirm delivery after tests and review pass.",
+    "测试和审查已通过，请核对改动后确认交付。": "Tests and review passed. Check the changes, then accept delivery.",
+    "需要处理的任务排在最前。": "Tasks that need you are listed first.",
+    "收起代码改动": "Hide code changes",
+    "查看代码改动（{0} 个文件）": "View code changes ({0} files)",
+    "正在读取改动…": "Loading changes…",
+    "确认不做": "Confirm won't do",
+    "展开对话": "Show chat",
+    "收起对话": "Hide chat",
+    "并行": "In parallel"
   };
   const ZH = Object.fromEntries(Object.entries(EN).map(([zh, en]) => [en, zh]));
   function useText() {
@@ -617,14 +675,27 @@
     const tasks = current(detail);
     if (detail.acceptance.status === "ACCEPTED") return { title: "交付已验收", text: "当前候选与验证记录已通过验收，可在证据页核对交付内容。", evidence: true };
     if (detail.workflow_version >= 2) {
-      if (detail.workflow_state === "REJECTED") return { title: "已决定不做", text: detail.rejection?.reason };
-      if (detail.workflow_state === "REPAIR_REQUIRED") return { title: "需要修改", action: "repair" };
-      if (detail.acceptance.status === "READY_FOR_ACCEPTANCE" || detail.workflow_state === "READY_FOR_ACCEPTANCE") return { title: "等待确认交付", action: "accept" };
-      if (!detail.approved_write) return { title: "等待确认需求", action: "approve" };
-      if (DEVELOPMENT_ROLES.every(role => tasks[role]?.status === "triage")) return { title: "等待执行", action: "advance" };
+      // `text` is a dictionary key, or [key, ...values] for templated messages.
+      if (detail.workflow_state === "REJECTED") return { title: "已决定不做", quote: detail.rejection?.reason, at: detail.rejection?.at };
+      if (detail.workflow_state === "REPAIR_REQUIRED") {
+        const used = detail.rounds.length - 1, limit = detail.budget?.max_rounds ?? Infinity;
+        if (used >= limit) return { title: "整改轮次已用完", text: ["已用完 {0} 轮整改。可以手动修改后新建任务，或决定不做。", limit] };
+        const blockers = (tasks.reviewer?.findings || []).filter(item => item?.severity === "blocker").length;
+        const next = [used + 2, Number.isFinite(limit) ? limit + 1 : "∞"];
+        return { title: "需要修改", action: "repair", text: blockers
+          ? ["独立审查发现 {0} 个阻断问题，填写修改意见后开始第 {1} 轮（共 {2} 轮）。", blockers, ...next]
+          : ["平台测试未通过，填写修改意见后开始第 {0} 轮（共 {1} 轮）。", ...next] };
+      }
+      if (detail.acceptance.status === "READY_FOR_ACCEPTANCE" || detail.workflow_state === "READY_FOR_ACCEPTANCE") return { title: "等待确认交付", action: "accept", text: "测试和审查已通过，请核对改动后确认交付。" };
+      if (!detail.approved_write) return { title: "等待确认需求", action: "approve", text: "批准后自动执行，测试和审查通过后再请你确认交付。" };
+      if (DEVELOPMENT_ROLES.every(role => tasks[role]?.status === "triage"))
+        return { title: "等待执行", action: "advance", text: detail.workflow_state === "HUMAN_REQUIRED" ? "执行环境未就绪，补齐下列检查项后点击「继续执行」。" : null };
       const blocked = DEVELOPMENT_ROLES.find(role => tasks[role]?.status === "blocked");
-      if (blocked && ["crashed", "failed", "spawn_failed", "timeout", "timed_out", "gave_up"].includes(tasks[blocked].outcome)) return { title: "需要处理", action: "retry-worker" };
-      if (blocked) return { title: "处理阻塞任务", focus: blocked };
+      const outcome = blocked && tasks[blocked].outcome;
+      if (blocked && ["crashed", "failed", "spawn_failed", "timeout", "timed_out", "gave_up"].includes(outcome))
+        return { title: "需要处理", action: "retry-worker", text: ["{0}中断（{1}），可保留失败记录后重试。", DEVELOPMENT_NAMES[blocked], OUTCOMES[outcome]] };
+      if (blocked) return { title: "处理阻塞任务", focus: blocked, text: ["{0}被阻塞，请在「工作过程」查看原因。", DEVELOPMENT_NAMES[blocked]] };
+      if (detail.workflow_state === "HUMAN_REQUIRED") return { title: "需要处理", action: "advance", text: "任务暂停等待你检查，确认无误后继续执行。" };
       return { title: "正在执行" };
     }
     if (ROLES.some(role => !tasks[role] || tasks[role].status === "missing")) return { title: "任务记录不完整", text: "当前任务记录缺失，请由操作员检查任务看板和执行记录。" };
@@ -812,6 +883,20 @@
     if (row.workflow_state === "HUMAN_REQUIRED") return "需要处理";
     return needsAttention(row) ? "需要关注" : STATES[state(row)];
   }
+  // One colour per meaning, shared by the list, the detail title and the pending count.
+  const TONES = {
+    green: ["已验收", "已完成"],
+    amber: ["待验收", "待修复", "需要处理", "需要关注", "待审批", "已阻塞", "记录缺失", "已审批待启动"],
+    blue: ["执行中", "待执行", "等待依赖"],
+    grey: ["已决定不做", "已归档"],
+  };
+  function tone(label) { return Object.keys(TONES).find(key => TONES[key].includes(label)) || "neutral"; }
+  function listLabel(row, conversational) { return conversational ? customerStatus(row) : needsAttention(row) ? "需要关注" : STATES[state(row)]; }
+  function byAttention(rows, conversational) {
+    // Stable: items that need the user first, otherwise keep the server's newest-first order.
+    return rows.map((row, index) => [tone(listLabel(row, conversational)) === "amber" ? 0 : 1, index, row])
+      .sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(item => item[2]);
+  }
 
   function ControllerChat({ execution, conversationId, resetKey, writable, onConversation, onCreated }) {
     const ui = useText();
@@ -819,6 +904,7 @@
     const [objective, setObjective] = useState(""), [error, setError] = useState("");
     const [sending, setSending] = useState(false), [creating, setCreating] = useState(false);
     const messagesRef = R.useRef(null);
+    const [collapsed, setCollapsed] = useState(false);
     const executionId = execution?.execution_id || "";
     useEffect(() => {
       let active = true;
@@ -869,8 +955,10 @@
       if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
     }, [conversation?.messages?.length, streamed]);
     const waiting = sending || conversation?.status === "running";
-    return h("section", { className: "wf-controller", "aria-label": ui("总控对话") },
-      h("div", { className: "wf-section-heading" }, h("h2", null, ui("总控对话"))),
+    return h("section", { className: cx("wf-controller", collapsed && "wf-collapsed"), "aria-label": ui("总控对话") },
+      h("div", { className: "wf-section-heading" }, h("h2", null, ui("总控对话")),
+        h("button", { type: "button", className: "wf-text-button wf-chat-toggle", "aria-expanded": !collapsed,
+          onClick: () => setCollapsed(value => !value) }, ui(collapsed ? "展开对话" : "收起对话"))),
       h("div", { ref: messagesRef, className: "wf-chat-messages", role: "log", "aria-live": "polite" },
         !conversation?.messages?.length && h("p", { className: "wf-chat-welcome" }, ui("描述需求，或询问当前任务的进展")),
         conversation?.messages?.map(item => h("article", { key: item.id, className: "wf-chat-message wf-chat-" + item.role },
@@ -922,24 +1010,31 @@
         h("button", { key, className: cx("wf-text-button", filter === key && "active"), "aria-pressed": filter === key, onClick: () => setFilter(key) }, ui(label)))),
       error && h("p", { className: "wf-alert", role: "alert" }, error),
       !events.length && h("p", { className: "wf-muted" }, ui("等待角色开始工作")),
-      h("div", { className: "wf-activity-events", role: "log", "aria-live": "polite" }, [...events].reverse().map(item =>
-        h("article", { key: item.id, className: "wf-activity-event" },
-          h("div", null, h("strong", null, ui(names[item.role] || item.role)),
+      h("div", { className: "wf-activity-events", role: "log", "aria-live": "polite" }, [...events].reverse().map(item => {
+        const label = item.kind === "status" ? ui(statuses[item.name] || item.name)
+          : item.kind === "tool" || item.kind === "tool_result" ? ui(item.kind === "tool" ? "工具调用" : "工具结果") + " · " + item.name : ui(item.name);
+        // Summaries and stage results are the readable story; tool traffic stays one collapsed line.
+        const prose = item.kind === "message" || item.kind === "result";
+        return h("article", { key: item.id, className: cx("wf-activity-event", "wf-event-" + item.kind, "wf-role-" + item.role) },
+          h("div", { className: "wf-event-head" }, h("strong", null, ui(names[item.role] || item.role)),
             h("time", null, new Date(item.at * 1000).toLocaleTimeString())),
-          item.kind === "status" ? item.text ? h("details", null, h("summary", null, ui(statuses[item.name] || item.name)), h("pre", null, item.text)) : h("span", null, ui(statuses[item.name] || item.name))
-            : h("details", { open: item.kind === "message" ? true : undefined },
-              h("summary", null, item.kind === "tool" || item.kind === "tool_result"
-                ? ui(item.kind === "tool" ? "工具调用" : "工具结果") + " · " + item.name : ui(item.name)),
-              h("pre", null, item.text))))));
+          prose ? h(R.Fragment, null, item.kind === "result" && h("small", null, label), h("div", { className: "wf-event-text" }, item.text))
+            : item.text ? h("details", null, h("summary", null, label), h("pre", null, item.text)) : h("span", null, label));
+      })));
   }
 
   function DeliveryCard({ detail }) {
     const ui = useText();
     const [data, setData] = useState(null), [error, setError] = useState("");
+    const [open, setOpen] = useState(false), [loading, setLoading] = useState(false);
     const ready = ["READY_FOR_ACCEPTANCE", "ACCEPTED"].includes(detail.workflow_state);
+    const count = detail.changed_files?.length;
     async function changes() {
-      try { setData(await request(`/executions/${detail.execution_id}/delivery`)); }
-      catch (e) { setError(message(e)); }
+      if (loading) return;
+      if (data) { setOpen(value => !value); return; }
+      setLoading(true); setError("");
+      try { setData(await request(`/executions/${detail.execution_id}/delivery`)); setOpen(true); }
+      catch (e) { setError(message(e)); } finally { setLoading(false); }
     }
     async function download() {
       try {
@@ -947,29 +1042,233 @@
         if (!response.ok) throw new Error(await response.text());
         const url = URL.createObjectURL(await response.blob());
         const anchor = document.createElement("a"); anchor.href = url; anchor.download = "delivery-" + detail.execution_id.slice(0, 8) + ".tar.gz";
-        anchor.click(); URL.revokeObjectURL(url);
+        // Firefox needs the anchor in the document, and the URL must outlive the click.
+        document.body.appendChild(anchor); anchor.click(); anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
       } catch (e) { setError(message(e)); }
     }
     if (!ready) return null;
-    return h("section", { className: "wf-delivery", "aria-label": ui("交付结果") },
+    const accepted = detail.workflow_state === "ACCEPTED";
+    return h("section", { className: cx("wf-delivery", accepted && "wf-delivery-accepted"), "aria-label": ui("交付结果") },
       h("h3", null, ui("交付结果")),
-      h("p", null, ui(detail.workflow_state === "ACCEPTED" ? (detail.accepted_by === "policy" ? "已在授权范围内自动验收" : "本次交付已验收") : "等待你确认验收")),
+      h("p", { className: "wf-delivery-status" }, ui(accepted ? (detail.accepted_by === "policy" ? "已在授权范围内自动验收" : "本次交付已验收") : "等待你确认验收")),
       detail.workflow_state === "READY_FOR_ACCEPTANCE" && h(DecisionReasons, { decision: detail.decision }),
-      h("ul", null, h("li", null, ui("项目测试和独立测试已通过")), h("li", null, ui("独立审查已通过"))),
-      h("div", { className: "wf-next-actions" },
-        h("button", { className: "wf-button", onClick: changes }, ui("查看代码改动")),
+      h("ul", { className: "wf-checklist" }, h("li", null, ui("项目测试和独立测试已通过")), h("li", null, ui("独立审查已通过"))),
+      h("div", { className: "wf-button-row" },
+        h("button", { className: "wf-button", "aria-expanded": open, disabled: loading, onClick: changes },
+          ui(loading ? "正在读取改动…" : open ? "收起代码改动" : count ? "查看代码改动（{0} 个文件）" : "查看代码改动", count)),
         h("button", { className: "wf-button", onClick: download }, ui("下载交付代码"))),
-      data && h("details", { open: true }, h("summary", null, ui("候选变更")),
-        h("ul", null, data.changed_files.map(file => h("li", { key: file }, file))), h("pre", null, data.patch)),
+      data && open && h("div", { className: "wf-diff" },
+        h("ul", { className: "wf-files" }, data.changed_files.map(file => h("li", { key: file }, h("code", null, file)))),
+        h("pre", null, data.patch)),
       error && h("p", { className: "wf-alert", role: "alert" }, error));
   }
 
-  function App() {
+  const ARCHITECT_ACTIONS = { approve: "批准并开始", accept: "确认验收", repair: "批准修复",
+    "request-changes": "提出修改", reject: "不做了", advance: "继续执行", "retry-worker": "重试失败角色" };
+
+  function TaskDrawer({ execution, onClose }) {
+    const ui = useText();
+    return h("aside", { className: "wf-task-drawer", "aria-label": ui("任务抽屉") },
+      h("header", null, h("h2", null, ui("任务")),
+        h("button", { className: "wf-button", onClick: onClose, "aria-label": ui("关闭任务抽屉") }, "×")),
+      h(App, { key: execution || "tasks", drawer: true, initialExecution: execution }));
+  }
+
+  function ArchitectChat({ meta }) {
+    const ui = useText(), { locale } = SDK.useI18n();
+    const [data, setData] = useState(null), [error, setError] = useState(""), [readError, setReadError] = useState("");
+    const [text, setText] = useState(""), [draft, setDraft] = useState(""), [busy, setBusy] = useState(false);
+    const [dialog, setDialog] = useState(null), [reason, setReason] = useState(""), [settings, setSettings] = useState(false);
+    const query = new URLSearchParams(window.location.search);
+    const [drawer, setDrawer] = useState(query.has("execution") && !query.has("card"));
+    const [execution, setExecution] = useState(query.get("execution") || "");
+    const [legacy, setLegacy] = useState(null), [highlight, setHighlight] = useState("");
+    const readRef = R.useRef(null), timerRef = R.useRef(null);
+    const messagesRef = R.useRef(null);
+    useEffect(() => {
+      let active = true, reading = false;
+      async function read() {
+        if (reading) return;
+        reading = true;
+        try {
+          const next = await request("/architect");
+          if (active) { setData(next); setReadError(""); }
+        } catch (e) { if (active) setReadError(message(e)); }
+        finally { reading = false; }
+      }
+      readRef.current = read;
+      read();
+      const timer = setInterval(read, 2000);
+      return () => { active = false; clearInterval(timer); clearTimeout(timerRef.current); };
+    }, []);
+    const objective = data?.conversation?.objective || "";
+    useEffect(() => {
+      setDraft(objective === data?.conversation?.submitted_objective ? "" : objective);
+    }, [objective, data?.conversation?.submitted_objective]);
+    function locate(id) {
+      const element = document.getElementById("wf-card-" + id);
+      if (!element) return;
+      element.scrollIntoView?.({ behavior: "auto", block: "center" });
+      setHighlight(id); clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setHighlight(""), 2000);
+    }
+    const linkedCard = query.get("card");
+    const linkedExists = !!data?.items?.some(item => item.type === "card" && item.card_id === linkedCard);
+    const lastMessage = data?.items?.filter(item => item.type === "message").at(-1)?.id;
+    useEffect(() => {
+      if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+    }, [lastMessage, data?.conversation?.pending?.input, data?.conversation?.pending?.text, objective]);
+    useEffect(() => {
+      if (linkedExists) locate(linkedCard);
+    }, [linkedExists, linkedCard]);
+    useEffect(() => {
+      if (data?.conversation?.highlight) locate(data.conversation.highlight.card_id);
+    }, [data?.conversation?.highlight?.at]);
+    useEffect(() => {
+      if (!dialog) return;
+      const form = document.querySelector(".wf-architect .wf-modal"), previous = document.activeElement;
+      form?.querySelector("textarea,button")?.focus();
+      function keys(event) {
+        if (event.key === "Escape" && !busy) { event.preventDefault(); setDialog(null); }
+        if (event.key === "Tab") {
+          const fields = Array.from(form.querySelectorAll("textarea,button:not([disabled])"));
+          if (event.shiftKey && document.activeElement === fields[0]) { event.preventDefault(); fields.at(-1)?.focus(); }
+          else if (!event.shiftKey && document.activeElement === fields.at(-1)) { event.preventDefault(); fields[0]?.focus(); }
+        }
+      }
+      form?.addEventListener("keydown", keys);
+      return () => { form?.removeEventListener("keydown", keys); previous?.focus(); };
+    }, [dialog, busy]);
+    const waiting = data?.conversation?.status === "running";
+    const writable = !!meta.actions_enabled && !busy && !readError;
+    const pending = data?.conversation?.pending;
+    let streamed = "";
+    const partial = pending?.text?.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)/);
+    if (partial) { try { streamed = JSON.parse('"' + partial[1] + '"'); } catch (_) { /* wait for a complete escape */ } }
+    async function send(event) {
+      event.preventDefault();
+      if (!writable || waiting || !text.trim()) return;
+      setBusy(true); setError("");
+      try { await post("/architect/messages", { message: text }); setText(""); await readRef.current(); }
+      catch (e) { setError(message(e)); }
+      finally { setBusy(false); }
+    }
+    async function task() {
+      if (!writable || !draft.trim()) return;
+      setBusy(true); setError("");
+      try { await post("/architect/tasks", { objective: draft }); setDraft(""); await readRef.current(); }
+      catch (e) { setError(message(e)); }
+      finally { setBusy(false); }
+    }
+    async function decide(event) {
+      event.preventDefault();
+      if (!writable) return;
+      setBusy(true); setError("");
+      try {
+        await post("/architect/decisions", { card_id: dialog.card.card_id, action: dialog.action, reason });
+        setDialog(null); setReason(""); await readRef.current();
+      } catch (e) {
+        setError(message(e));
+        setDialog(null); await readRef.current();
+      } finally { setBusy(false); }
+    }
+    function openTask(id) { setExecution(id); setDrawer(true); }
+    function cardView(card) {
+      const resolved = card.resolved;
+      return h("article", { key: card.card_id, id: "wf-card-" + card.card_id,
+        className: cx("wf-architect-card", resolved && "resolved", highlight === card.card_id && "highlight") },
+        h("h3", null, ui(card.title)), h("p", { className: "wf-card-objective" }, taskTitle(card.objective)),
+        h("p", null, ui(card.text)),
+        card.advice?.source === "model" && h("div", { className: "wf-architect-advice" },
+          h("strong", null, ui("架构师建议")), h("p", null, card.advice.text)),
+        card.advice?.source === "rule" && card.advice.text !== card.text && h("p", null, ui(card.advice.text)),
+        h(DecisionReasons, { decision: { reasons: card.reasons } }),
+        !!card.blockers?.length && h(ReviewFindings, { findings: card.blockers }),
+        resolved ? h("p", { className: "wf-resolved" },
+          ui("已由 {0} 于 {1} 在{2}{3}", resolved.name,
+            date(resolved.at, locale), ui(resolved.by.startsWith("feishu:") ? "飞书" : "网页"),
+            ui(ARCHITECT_ACTIONS[resolved.action] || resolved.action)))
+          : h("div", { className: "wf-button-row" }, card.actions.map(action =>
+            h("button", { key: action, className: cx("wf-button", action === card.actions[0] && "wf-primary"),
+              disabled: !writable, onClick: () => { setReason(""); setError(""); setDialog({ card, action }); } },
+            ui(ARCHITECT_ACTIONS[action] || action)))),
+        resolved?.reason && h("p", null, resolved.reason),
+        h("button", { className: "wf-text-button", onClick: () => openTask(card.execution_id) }, ui("查看任务详情")));
+    }
+    const items = data?.items || [];
+    return h("main", { className: cx("workflow-app wf-architect", drawer && "wf-drawer-open") },
+      h("header", { className: "wf-header" }, h("div", null, h("h1", null, ui("总控台对话")),
+        h("p", { className: "wf-muted" }, ui("提需求、看进展、做决定，都在这段对话里。"))),
+        h("div", { className: "wf-header-actions" },
+          h("button", { className: "wf-button", disabled: !data?.pending,
+            onClick: () => { const first = items.find(item => item.type === "card" && !item.resolved); if (first) locate(first.card_id); } },
+            ui("{0} 项待你决定", data?.pending || 0)),
+          meta.actions_enabled && meta.model_connections_supported && h("button", { className: "wf-button", "aria-expanded": settings,
+            onClick: () => setSettings(value => !value) }, ui("模型配置")),
+          h("button", { className: "wf-button", "aria-expanded": drawer, onClick: () => setDrawer(value => !value) }, ui("任务")))),
+      settings && h(ModelConnections, { execution: "", onConfigured: () => setSettings(false) }),
+      h("div", { className: "wf-architect-layout" },
+        h("section", { className: "wf-architect-conversation", "aria-label": ui("总控台对话") },
+          h("p", { className: "wf-model-hint" }, ui("总控台对话使用 Hermes 主模型。"), " ",
+            h("a", { href: "/models" }, ui("配置主模型连接"))),
+          readError && h("div", { className: "wf-alert", role: "alert" }, ui(readError),
+            h("button", { className: "wf-button", onClick: () => readRef.current() }, ui("重新读取"))),
+          error && h("p", { className: "wf-alert", role: "alert" }, ui(error)),
+          h("div", { className: "wf-architect-timeline", ref: messagesRef, role: "log", "aria-live": "polite" },
+            !items.length && h("p", { className: "wf-chat-welcome" }, ui("告诉我你的目标，我会梳理方案、协调研发，并把需要你确认的决定带回这里。")),
+            items.map(item => item.type === "card" ? cardView(item)
+              : item.type === "progress" ? h("button", { key: item.id, className: "wf-timeline-progress",
+                onClick: () => openTask(item.execution_id) }, ui("系统进展"), " · ",
+                  item.label ? ui("「{0}」{1}", item.objective, ui(item.label)) : ui(item.text))
+                : h("article", { key: "message-" + item.id, className: "wf-chat-message wf-chat-" + item.role },
+                  h("small", null, ui(item.role === "user" ? "你" : "总控台对话"),
+                    item.channel === "feishu" && " · " + ui("飞书 · {0}", item.name)), h("div", null, item.content))),
+            pending && !items.some(item => item.type === "message" && item.role === "user" && item.content === pending.input)
+              && h("article", { className: "wf-chat-message wf-chat-user" }, pending.input),
+            waiting && h("article", { className: "wf-chat-message wf-chat-assistant", role: "status" }, streamed || ui("总控正在回复…")),
+            draft && h("section", { className: "wf-task-draft", "aria-label": ui("任务草案") },
+              h("h3", null, ui("任务草案")),
+              h("textarea", { value: draft, rows: 5, maxLength: 4000, "aria-label": ui("任务草案"), onChange: event => setDraft(event.target.value) }),
+              h("button", { className: "wf-button wf-primary", disabled: !writable || waiting || !draft.trim(), onClick: task }, ui("生成任务卡")))),
+          data?.conversation?.error && h("p", { className: "wf-alert", role: "alert" }, ui(data.conversation.error)),
+          h("form", { className: "wf-chat-composer", onSubmit: send },
+            h("textarea", { value: text, rows: 3, maxLength: 4000, required: true,
+              "aria-label": ui("在总控台对话中讨论需求"), placeholder: ui("描述目标，或询问总控台的建议"), disabled: !meta.actions_enabled,
+              onChange: event => setText(event.target.value),
+              onKeyDown: event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault(); event.currentTarget.form.requestSubmit(); } } }),
+            h("button", { className: "wf-button wf-primary", disabled: !writable || waiting || !text.trim() }, ui("发送"))),
+          !!data?.legacy?.length && h("details", { className: "wf-legacy" }, h("summary", null, ui("历史对话（只读）")),
+            data.legacy.map(row => h("button", { key: row.id, className: "wf-text-button", onClick: async () => {
+              try { setLegacy(await request("/conversations/" + row.id)); } catch (e) { setError(message(e)); }
+            } }, row.title)),
+            legacy && h("div", { className: "wf-legacy-messages" }, legacy.messages.map(item =>
+              h("p", { key: item.id }, h("strong", null, ui(item.role === "user" ? "你" : "总控台对话")), " · ", item.content))))),
+        drawer && h(TaskDrawer, { execution, onClose: () => setDrawer(false) })),
+      dialog && h("div", { className: "wf-modal-backdrop" },
+        h("form", { className: "wf-modal", role: "dialog", "aria-modal": true,
+          "aria-label": ui(ARCHITECT_ACTIONS[dialog.action]), onSubmit: decide },
+          h("h2", null, ui(ARCHITECT_ACTIONS[dialog.action])),
+          h("p", { className: "wf-confirm-target" }, dialog.card.objective),
+          h("p", null, ui("第 {0} 轮", dialog.card.round + 1)),
+          h("p", null, ui(dialog.card.text)), h(DecisionReasons, { decision: { reasons: dialog.card.reasons } }),
+          ["repair", "request-changes", "reject"].includes(dialog.action) && h("label", null, ui("原因或修改意见"),
+            h("textarea", { required: true, maxLength: 2000, rows: 3, value: reason, onChange: event => setReason(event.target.value) })),
+          dialog.action === "accept" && h("label", null, ui("备注（可选，会记入「已定的事」）"),
+            h("textarea", { maxLength: 2000, rows: 2, value: reason, onChange: event => setReason(event.target.value) })),
+          h("div", { className: "wf-modal-actions" },
+            h("button", { type: "button", className: "wf-button", disabled: busy, onClick: () => setDialog(null) }, ui("取消")),
+            h("button", { type: "submit", className: "wf-button wf-primary", disabled: !writable },
+              ui(busy ? "正在处理…" : ARCHITECT_ACTIONS[dialog.action]))))));
+  }
+
+  function App({ drawer = false, initialExecution = null } = {}) {
     const ui = useText();
     const { locale } = SDK.useI18n();
     const formatDate = value => date(value, locale);
     const [meta, setMeta] = useState(null), [rows, setRows] = useState(null), [selected, setSelected] = useState(() => {
-      const linked = new URLSearchParams(window.location.search).get("execution");
+      const linked = initialExecution || new URLSearchParams(window.location.search).get("execution");
       return linked && /^[0-9a-f]{32}$/.test(linked) ? linked : null;
     });
     const [snapshotDetail, setDetail] = useState(null), [tab, setTab] = useState("overview"), [focus, setFocus] = useState("researcher");
@@ -1001,11 +1300,13 @@
           const [info, data] = await Promise.all([request("/meta"), request("/executions")]);
           if (!active) return;
           setMeta(info); setRows(data.executions);
+          if (info.architect_supported && !drawer) return;
           if (info.conversation_supported) {
             const chats = await request("/conversations");
             if (active) setConversations(chats.conversations);
           }
-          const target = data.executions.some(row => row.execution_id === selected) ? selected : data.executions[0]?.execution_id || null;
+          const target = data.executions.some(row => row.execution_id === selected) ? selected
+            : byAttention(data.executions, info.conversation_supported)[0]?.execution_id || null;
           if (target !== selected) {
             setSelected(target); setFocus(initialStage(data.executions.find(row => row.execution_id === target)));
             setDetail(null); setProof(null); setUpdatedAt(null); setTab("overview"); setShowDetails(false);
@@ -1084,9 +1385,11 @@
         setDialog(null); setAck(false); setReason("");
       } catch (e) { setError(message(e)); } finally { setBusy(false); reload(); }
     }
-    const writable = !!meta?.actions_enabled;
+    const writable = !!meta?.actions_enabled && (!drawer || detail && (detail.workflow_version || 1) < 2);
     const canOperate = writable && !busy && !refreshing && !readError && updatedAt !== null && (!selected || !!detail);
-    const visible = (rows || []).filter(row => row.objective.toLowerCase().includes(query.trim().toLowerCase()));
+    const conversational = !!meta?.conversation_supported, needle = query.trim().toLowerCase();
+    const visible = byAttention((rows || []).filter(row => row.objective.toLowerCase().includes(needle)), conversational);
+    const pending = (rows || []).filter(row => tone(listLabel(row, conversational)) === "amber").length;
     const tasks = current(detail), activeTask = tasks[focus];
     const development = detail?.workflow_version >= 2, roles = stageRoles(detail);
     const names = development ? DEVELOPMENT_NAMES : NAMES;
@@ -1107,8 +1410,15 @@
       return "";
     }
     const step = detail ? nextStep(detail) : null;
+    const headerLabel = detail && (conversational ? customerStatus(detail) : detail.acceptance.status === "ACCEPTED" ? "已验收" : state(detail) === "done" ? "待验收" : STATES[state(detail)]);
+    const stepText = step?.text && (Array.isArray(step.text)
+      ? ui(step.text[0], ...step.text.slice(1).map(value => typeof value === "string" ? ui(value) : value)) : ui(step.text));
+    const stepTone = step?.action === "repair" || step?.action === "retry-worker" || step?.focus || step?.title === "整改轮次已用完" ? "amber"
+      : detail?.workflow_state === "REJECTED" ? "grey" : "accent";
+    const node = role => h("button", {
+      key: role, className: cx("wf-node", "wf-node-" + role, "wf-state-" + (tasks[role]?.status || "missing"), focus === role && "focused"),
+      "aria-pressed": focus === role, onClick: () => setFocus(role) }, h("strong", null, ui(names[role])), h("small", null, stageLabel(role)));
     const completed = roles.filter(role => finished(tasks[role])).length;
-    const conversational = !!meta?.conversation_supported;
     const actionLabel = key => development && key === "approve" ? "批准并开始" : development && key === "repair" ? (conversational ? "批准修复" : "批准整改并执行") : development && key === "accept" && conversational ? "确认验收" : ACTIONS[key][0];
     function openAction(key) { const retry_role = roles.find(role => tasks[role]?.status === "blocked"); setAck(development && conversational); setDialogExecution(selected); setDialogTarget({ workflow_version: detail.workflow_version, objective: detail.objective, revision: detail.source_revision, candidate_digest: detail.candidate_digest, round_number: detail.rounds.at(-1).number, decision: detail.decision, retry_role, run_id: tasks[retry_role]?.run_id }); setError(""); setDialog(key); }
     function focusStage(role) { setFocus(role); document.querySelector(".workflow-app .wf-node-" + role)?.focus(); }
@@ -1120,7 +1430,9 @@
     const newTaskButton = h("button", { className: "wf-button wf-primary", disabled: !canOperate,
       onClick: () => { setError(""); if (conversational) { setComposing(true); setConversationId(""); setChatReset(value => value + 1); } else setDialog("new"); } }, ui("新建任务"));
 
-    return h("main", { className: cx("workflow-app wf-client", conversational && "wf-conversational") },
+    if (meta?.architect_supported && !drawer) return h(ArchitectChat, { meta });
+    return h(drawer ? "section" : "main", { className: cx("workflow-app wf-client", conversational && "wf-conversational",
+      drawer && detail && (detail.workflow_version || 1) < 2 && "wf-legacy-task") },
       h("header", { className: "wf-header" }, h("h1", null, ui("工作台")),
         h("div", { className: "wf-header-actions" },
           writable && meta?.model_connections_supported && h("button", { className: "wf-button", "aria-expanded": settingsOpen,
@@ -1136,10 +1448,11 @@
           onConfigured: () => { setSettingsOpen(false); reload(); } })),
       h("div", { className: "wf-workspace" },
         h("aside", { className: "wf-executions" },
-          h("div", { className: "wf-section-heading" }, h("h2", null, ui("任务列表"))),
+          h("div", { className: "wf-section-heading" }, h("h2", null, ui("任务列表")),
+            pending > 0 && h(Badge, { tone: "amber" }, ui("{0} 项待你处理", pending))),
           !!rows?.length && h("input", { className: "wf-search", placeholder: ui("搜索任务…"), value: query,
             onChange: event => setQuery(event.target.value), "aria-label": ui("搜索任务") }),
-          conversational && conversations.filter(row => !row.execution_id && row.title.toLowerCase().includes(query.toLowerCase())).map(row =>
+          conversational && conversations.filter(row => !row.execution_id && row.title.toLowerCase().includes(needle)).map(row =>
             h("button", { key: row.id, className: cx("wf-execution", conversationId === row.id && "selected"), onClick: () => { setComposing(true); setConversationId(row.id); } },
               h("h3", null, row.title), h(Badge, null, ui("任务草案")))),
           rows === null ? h("p", { className: "wf-loading" }, ui(readError ? "暂时无法读取执行列表" : "正在读取执行记录…"))
@@ -1153,10 +1466,9 @@
                 setDetail(null); setProof(null); setUpdatedAt(null); setTab("overview"); setShowDetails(false);
               } },
               h("h3", null, taskTitle(row.objective)),
-              h(Badge, { tone: needsAttention(row) ? "amber" : state(row) === "running" ? "green" : "neutral" },
-                ui(conversational ? customerStatus(row) : needsAttention(row) ? "需要关注" : STATES[state(row)]))))
+              h(Badge, { tone: tone(listLabel(row, conversational)) }, ui(listLabel(row, conversational)))))
             : h("p", { className: "wf-muted" }, ui(query ? "没有匹配的目标" : "还没有任务"))),
-        conversational && h(ControllerChat, { execution: composing ? null : detail, conversationId, resetKey: chatReset, writable,
+        conversational && !drawer && h(ControllerChat, { execution: composing ? null : detail, conversationId, resetKey: chatReset, writable,
           onConversation: id => { setConversationId(id); request("/conversations").then(data => setConversations(data.conversations)); },
           onCreated: (execution, id) => { setSelected(execution); setConversationId(id); setComposing(false); setDetail(null); reload(); } }),
         h("section", { className: "wf-detail", "aria-label": ui("执行详情") },
@@ -1166,8 +1478,7 @@
             : h(R.Fragment, null,
               h("div", { className: "wf-detail-header" },
                 h("div", { className: "wf-title-line" }, h("h2", null, taskTitle(detail.objective)),
-                  h(Badge, { tone: detail.acceptance.status === "ACCEPTED" ? "green" : "neutral" },
-                    ui(conversational ? customerStatus(detail) : detail.acceptance.status === "ACCEPTED" ? "已验收" : state(detail) === "done" ? "待验收" : STATES[state(detail)]))),
+                  h(Badge, { tone: tone(headerLabel) }, ui(headerLabel))),
                 h("button", { className: "wf-text-button", "aria-label": ui("详细记录"), "aria-expanded": showDetails,
                   onClick: () => { setShowDetails(value => !value); setTab("overview"); setProof(null); } }, ui(showDetails ? "收起记录" : "详细记录"))),
               showDetails && h("div", { className: "wf-record-meta" },
@@ -1179,18 +1490,24 @@
                   key, className: tab === key ? "active" : "", "aria-pressed": tab === key,
                   onClick: () => { if (key === tab) return; setProof(null); setTab(key); } }, ui(label)))),
               tab === "overview" && h("div", { className: "wf-content" },
-                detail.acceptance.status !== "ACCEPTED" && h("section", { className: "wf-next-step", "aria-label": ui("下一步") },
-                  h("h3", null, ui(needsSetup ? (needsModels ? "请先配置模型" : "运行环境未就绪") : step.title)),
+                detail.acceptance.status !== "ACCEPTED" && h("section", { className: cx("wf-next-step", "wf-tone-" + stepTone), "aria-label": ui("下一步") },
+                  h("div", { className: "wf-next-body" },
+                    h("h3", null, ui(needsSetup ? (needsModels ? "请先配置模型" : "运行环境未就绪") : step.title)),
+                    !needsSetup && stepText && h("p", null, stepText),
+                    step.quote && h("blockquote", null, step.quote),
+                    step.at && h("small", null, ui("决定于 {0}", formatDate(step.at)))),
                   h("div", { className: "wf-next-actions" },
                     needsSetup ? h("button", { className: "wf-button wf-primary", onClick: () => needsModels ? setSettingsOpen(true) : showRecords() }, ui(needsModels ? "模型配置" : "查看问题"))
                       : step.action ? h("button", { className: "wf-button wf-primary", disabled: !!actionBlocked(step.action), onClick: () => openAction(step.action) }, ui(actionLabel(step.action)))
-                        : step.focus && h("button", { className: "wf-button", onClick: () => focusStage(step.focus) }, ui("查看阻塞阶段")))),
-                conversational && detail.workflow_state === "READY_FOR_ACCEPTANCE" && h("button", { className: "wf-button", disabled: !canOperate, onClick: () => openAction("request-changes") }, ui("提出修改")),
-                development && ["READY_FOR_ACCEPTANCE", "REPAIR_REQUIRED", "HUMAN_REQUIRED", "WAITING_APPROVAL"].includes(detail.workflow_state) && h("button", { className: "wf-button", disabled: !canOperate, onClick: () => openAction("reject") }, ui("不做了")),
+                        : step.focus && h("button", { className: "wf-button", onClick: () => focusStage(step.focus) }, ui("查看阻塞阶段")),
+                    conversational && detail.workflow_state === "READY_FOR_ACCEPTANCE" && h("button", { className: "wf-button", disabled: !canOperate, onClick: () => openAction("request-changes") }, ui("提出修改")),
+                    development && ["READY_FOR_ACCEPTANCE", "REPAIR_REQUIRED", "HUMAN_REQUIRED", "WAITING_APPROVAL"].includes(detail.workflow_state) && h("button", { className: "wf-button wf-danger", disabled: !canOperate, onClick: () => openAction("reject") }, ui("不做了")))),
                 h("div", { className: "wf-progress" }, h("progress", { "aria-label": ui("阶段完成进度"), max: 4, value: completed })),
-                h("div", { className: "wf-dag", "aria-label": ui(development ? "方案 → 开发与独立测试 → 独立审查" : "调查 → 开发 → 独立审查 → 最终汇总") }, roles.map(role => h("button", {
-                  key: role, className: cx("wf-node", "wf-node-" + role, "wf-state-" + (tasks[role]?.status || "missing"), focus === role && "focused"),
-                  "aria-pressed": focus === role, onClick: () => setFocus(role) }, h("strong", null, ui(names[role])), h("small", null, stageLabel(role))))),
+                h("div", { className: cx("wf-dag", development && "wf-dag-v2"), "aria-label": ui(development ? "方案 → 开发与独立测试 → 独立审查" : "调查 → 开发 → 独立审查 → 最终汇总") },
+                  // v2 runs build and independent testing side by side; show them stacked in one column.
+                  (development ? ["researcher", ["builder", "tester"], "reviewer"] : roles).map(column => Array.isArray(column)
+                    ? h("div", { key: column.join("-"), className: "wf-dag-parallel", "aria-label": ui("并行") }, column.map(node))
+                    : node(column))),
                 conversational && development && h(DeliveryCard, { key: detail.execution_id, detail }),
                 conversational && h(WorkActivity, { execution: detail.execution_id, onProgress: reload }),
                 (activeTask?.result || activeTask?.verification) && (conversational ? h("details", { className: "wf-raw-result" }, h("summary", null, ui("完整记录")), h(TaskResults, { role: focus, task: activeTask, development })) : h(TaskResults, { role: focus, task: activeTask, development })),
@@ -1214,7 +1531,7 @@
                   : h("p", { className: "wf-muted" }, ui("暂无整改记录")),
                 writable && step?.action === "repair" && actionButton("repair"))))),
       dialog && h("div", { className: "wf-modal-backdrop", onClick: event => { if (event.target === event.currentTarget && !busy) setDialog(null); } },
-        h("form", { className: "wf-modal", role: "dialog", "aria-modal": true,
+        h("form", { className: cx("wf-modal", dialog === "reject" && "wf-modal-danger"), role: "dialog", "aria-modal": true,
           "aria-label": dialog === "new" ? ui("新建任务") : ui(actionLabel(dialog)), onSubmit: execute },
           h("h2", null, dialog === "new" ? ui("新建任务") : ui(actionLabel(dialog))),
           dialog === "new" ? h(R.Fragment, null,
@@ -1240,8 +1557,8 @@
           error && h("p", { className: "wf-alert", role: "alert" }, ui(error)),
           h("div", { className: "wf-modal-actions" },
             h("button", { type: "button", className: "wf-button", disabled: busy, onClick: () => setDialog(null) }, ui("取消")),
-            h("button", { type: "submit", className: "wf-button wf-primary", disabled: !canOperate || (dialog !== "new" && (!ack || !!actionBlocked(dialog))) },
-              ui(busy ? "正在处理…" : dialog === "new" ? "创建任务" : dialog === "request-changes" ? "批准修改并执行" : development && conversational ? actionLabel(dialog) : "确认操作"))))));
+            h("button", { type: "submit", className: cx("wf-button", dialog === "reject" ? "wf-danger-solid" : "wf-primary"), disabled: !canOperate || (dialog !== "new" && (!ack || !!actionBlocked(dialog))) },
+              ui(busy ? "正在处理…" : dialog === "new" ? "创建任务" : dialog === "request-changes" ? "批准修改并执行" : dialog === "reject" ? "确认不做" : development && conversational ? actionLabel(dialog) : "确认操作"))))));
   }
 
   window.__HERMES_PLUGINS__.register("workflow", App);

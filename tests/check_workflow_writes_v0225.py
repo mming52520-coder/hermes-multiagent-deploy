@@ -62,7 +62,13 @@ class WorkflowWrites(unittest.TestCase):
     def test_stage_output_reads_successful_skill_views_from_native_worker_session(self):
         from hermes_state import SessionDB
 
-        spec = importlib.util.spec_from_file_location("stage_output_api", REPO / "plugins/workflow/dashboard/plugin_api.py")
+        spec = importlib.util.spec_from_file_location("stage_output_installer", REPO / "scripts/install-workflow-app.py")
+        installer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(installer)
+        binding = self.directory / "stage-output.env"
+        binding.write_text("\n".join(f"{key}={value}" for key, value in self.env.items()) + "\n")
+        target = installer.install(self.home, binding)
+        spec = importlib.util.spec_from_file_location("stage_output_api", target / "dashboard/plugin_api.py")
         api = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(api)
         self.workflow.start(self.execution, True)

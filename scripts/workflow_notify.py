@@ -37,9 +37,10 @@ def sign(secret: str, timestamp: int) -> str:
     return base64.b64encode(hmac.new(key, b"", hashlib.sha256).digest()).decode("ascii")
 
 
-def dashboard_link(env: dict, execution: str) -> str:
+def dashboard_link(env: dict, execution: str, card_id: str = "") -> str:
     base = env.get("WORKFLOW_DASHBOARD_URL", "").strip().rstrip("/")
-    return f"{base}/workflow?{urlencode({'execution': execution})}" if base else ""
+    params = {"card": card_id, "execution": execution} if card_id else {"execution": execution}
+    return f"{base}/workflow?{urlencode(params)}" if base else ""
 
 
 def card(env: dict, event: dict) -> dict:
@@ -53,7 +54,7 @@ def card(env: dict, event: dict) -> dict:
         paths = "、".join(reason.get("paths", [])[:5])
         lines.append(f"- {reason['category']}" + (f"：{paths}" if paths else ""))
     elements = [{"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}}]
-    link = dashboard_link(env, event["execution_id"])
+    link = dashboard_link(env, event["execution_id"], event.get("card_id", ""))
     if link:
         elements.append({"tag": "action", "actions": [
             {"tag": "button", "text": {"tag": "plain_text", "content": "去工作台处理"}, "type": "primary",
