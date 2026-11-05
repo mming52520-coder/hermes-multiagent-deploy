@@ -985,6 +985,32 @@ function enableArchitect() {
   return card;
 }
 
+test("streamed controller replies omit the console prefix including partial tokens", async () => {
+  enableArchitect();
+  const conversation = view.server.architect.conversation;
+  conversation.status = "running";
+  conversation.pending = { input: "发布任务", text: '{"reply":"总控台' };
+  await view.render();
+  assert.equal(view.container.querySelector('.wf-architect-timeline [role="status"]').textContent, "总控正在回复…");
+  conversation.pending.text = '{"reply":"总控台对话：需求已整理。"';
+  await view.poll();
+  assert.equal(view.container.querySelector('.wf-architect-timeline [role="status"]').textContent, "需求已整理。");
+});
+
+test("a published chat task clears the draft and displays the server execution receipt", async () => {
+  enableArchitect();
+  const data = view.server.architect;
+  data.conversation.objective = "已明确的任务需求";
+  await view.render();
+  assert.ok(view.container.querySelector(".wf-task-draft"));
+  data.conversation.submitted_objective = data.conversation.objective;
+  data.items.push({ type: "message", id: 2, role: "assistant", content: "任务已发布，当前状态：开始方案。", at: 103 });
+  await view.poll();
+  assert.equal(view.container.querySelector(".wf-task-draft"), null);
+  assert.match(view.container.querySelector(".wf-architect-timeline").textContent, /任务已发布/);
+  assert.equal(view.requests.filter(({ route }) => route === "/architect/tasks" || route === "/architect/decisions").length, 0);
+});
+
 test("architect timeline renders messages, system progress and advice in their original order", async () => {
   enableArchitect();
   await view.render();

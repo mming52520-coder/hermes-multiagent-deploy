@@ -1,6 +1,6 @@
 # Hermes 多 Agent 工作流与部署手册
 
-在 Hermes 上运行一组分工明确的研发 Agent：总控和你讨论需求并生成任务卡，方案、开发、独立测试、独立审查四个角色在隔离的 Docker 副本里完成工作，平台在断网容器里重新跑测试，只把需要你决定的事推给你。
+在 Hermes 上运行一组分工明确的研发 Agent：总控和你讨论需求，整理好目标、范围及验收标准后直接发布任务并开始执行。方案、开发、独立测试、独立审查四个角色在隔离的 Docker 副本里完成工作，平台在断网容器里重新跑测试，只把需要你决定的事推给你。
 
 ```text
 你（对话/飞书卡片） → 总控 → 方案 → 开发 ∥ 独立测试 → 平台验证 → 独立审查 → 交付
@@ -14,6 +14,7 @@
 | 已有 Hermes v0.22.5，安装中文工作台 | [下载接入包](downloads/hermes-workflow-local-v2-zh-CN.tar.gz?raw=true) · [安装说明](docs/LOCAL_HERMES_V0225.md) |
 | 了解页面按钮和操作 | [按钮与按键说明](docs/WORKFLOW_APP_BUTTONS_ZH.md) · [应用说明](docs/WORKFLOW_APP.md) |
 | 少点按钮：授权范围、飞书决策卡、决策记录 | [自动化与决策](docs/AUTOMATION_ZH.md) |
+| 角色 skill、原生加载与对照验收 | [角色与机制](docs/ROLE_SKILLS.md) · [验收与复跑](docs/ROLE_SKILLS_EVALUATION.md) |
 | 从零部署到 Ubuntu 服务器 | 本页下文的部署手册 |
 | 版本状态、验证记录、已知限制 | [版本与状态记录](docs/CHANGELOG.md) · [P0 报告](docs/MULTIAGENT_WORKFLOW_P0.md) |
 

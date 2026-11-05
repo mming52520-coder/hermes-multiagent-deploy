@@ -13,7 +13,7 @@ import sys
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 ASSETS = ("plugin.yaml", "__init__.py", "feishu_gateway.py", "dashboard/manifest.json", "dashboard/plugin_api.py", "dashboard/app.js", "dashboard/app.css")
-OPERATOR = ("workflow_control.py", "workflow_policy.py", "workflow_notify.py", "configure_profiles.py", "hermes_baseline.py", "workflow_runtime.py", "workflow_models.py", "workflow_conversation.py", "workflow_activity.py", "workflow_timeline.py", "workflow_advisor.py", "workflow_feishu.py", "workflow_feishu_client.py")
+OPERATOR = ("workflow_control.py", "workflow_policy.py", "workflow_notify.py", "configure_profiles.py", "hermes_baseline.py", "workflow_runtime.py", "workflow_models.py", "workflow_conversation.py", "workflow_activity.py", "workflow_timeline.py", "workflow_advisor.py", "workflow_feishu.py", "workflow_feishu_client.py", "workflow_skills.py")
 
 
 def install(home: Path, env_file: Path, enable: bool = False, archive: Path | None = None) -> Path:
@@ -27,6 +27,8 @@ def install(home: Path, env_file: Path, enable: bool = False, archive: Path | No
     files.update({f"operator/{name}": REPOSITORY / "scripts" / name for name in OPERATOR})
     files.update({f"operator/souls/{role}.md": REPOSITORY / "souls" / f"{role}.md"
                   for role in ("researcher", "builder", "tester", "reviewer", "orchestrator")})
+    files.update({f"operator/skills/{name}/SKILL.md": REPOSITORY / "skills" / name / "SKILL.md"
+                  for name in ("workflow-architecture", "workflow-investigation", "workflow-implementation")})
     marker = target / ".managed-files.json"
     previous = {}
     if target.exists():

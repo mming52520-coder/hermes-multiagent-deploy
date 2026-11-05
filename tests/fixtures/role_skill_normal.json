@@ -1,0 +1,6 @@
+{
+  "role": "builder",
+  "image": "hermes-workflow-python-test:local",
+  "test_command": "python3 -m unittest discover -s acceptance_demo -p 'test_*.py' -v",
+  "prompt": "只在隔离候选的 acceptance_demo/ 新增 Python 标准库模块 duration.py、__init__.py、unittest 测试和使用说明。导出 format_duration(seconds: int) -> str，将非负整数秒转换为 HH:MM:SS，小时至少两位，不按天取模。0→00:00:00，1→00:00:01，3661→01:01:01，90000→25:00:00。bool、float、str、None 等非整数抛 TypeError，负整数抛 ValueError。覆盖正常值、分钟/小时边界、超过24小时及非法输入。不引入依赖，不联网，不提交、推送或部署。Researcher 产出 DESIGN.md，Builder 实现自测，Tester 独立设计测试，平台在冻结候选运行固定命令和独立测试，Reviewer 审查。"
+}

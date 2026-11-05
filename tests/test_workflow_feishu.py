@@ -271,14 +271,17 @@ class BridgeTest(unittest.TestCase):
         client.start()
         self.addCleanup(client.stop)
         self.referenced = None
+        self.model_payload = {"reply": "建议核对证据。", "objective": None}
+        self.model_inputs = []
 
         def factory(wf, row, db):
             class Agent:
                 session_id = row["session_id"]
 
                 def run_conversation(agent, *args, **kwargs):
+                    self.model_inputs.append(args[0])
                     response = json.dumps(
-                        {"reply": "建议核对证据。", "objective": None, "card_id": self.referenced}
+                        {**self.model_payload, "card_id": self.referenced}
                     )
                     if db is not None:
                         db.append_message(
@@ -718,6 +721,60 @@ class BridgeTest(unittest.TestCase):
         after = self.client.get(self.url + "/architect").json()
         self.assertEqual(before["conversation"]["id"], after["conversation"]["id"])
         self.assertEqual(after["pending"], 1)
+        replies = [t for _, t in self.http.texts() if "建议核对" in t]
+        self.assertEqual(replies, ["建议核对证据。", "建议核对证据。"])
+
+    def test_authorized_engineer_publishes_and_starts_via_feishu_conversation(self):
+        self.model_payload = {"reply": "总控台对话：需求已整理，准备发布。",
+                              "objective": "Synthetic chat publication with fixed acceptance criteria", "publish": True}
+        core = self.api.core_module()
+        with patch.object(core.Workflow, "readiness", return_value={"ready": True, "checks": []}), \
+                patch.object(core.workflow_runtime, "dispatch", return_value={"spawned": []}) as dispatch:
+            self.handle(event(actor="ou_admin", text="创建并发布此任务，直接执行"))
+            self.wait_for(lambda: any("任务已发布" in text for _, text in self.http.texts()))
+            row = self.controller.architect(self.workflow, create_missing=False)
+            self.assertEqual(len(row["execution_ids"]), 1)
+            execution = row["execution_id"]
+            self.jobs.append(execution)
+            self.settled(execution)
+            manifest = self.workflow.load(execution)
+            self.assertEqual(manifest["workflow_state"], "RUNNING_RESEARCH")
+            self.assertTrue(manifest["approved_write"])
+            self.assertEqual(manifest["decisions_log"][-1]["by"], "feishu:ou_admin")
+            self.assertIn('"can_publish": true', self.model_inputs[0])
+            reply = next(text for _, text in self.http.texts() if "任务已发布" in text)
+            self.assertTrue(reply.startswith("需求已整理，准备发布。"))
+            self.assertNotIn("总控台对话", reply)
+            self.assertIn(execution, reply)
+            dispatch.assert_called_once()
+
+    def test_discussion_member_cannot_publish_even_if_model_requests_it(self):
+        self.model_payload = {"reply": "需求已整理。", "objective": "Unauthorized synthetic task", "publish": True}
+        self.handle(event(actor="ou_member", text="发布任务"))
+        self.wait_for(lambda: any("没有任务发布权限" in text for _, text in self.http.texts()))
+        row = self.controller.architect(self.workflow, create_missing=False)
+        self.assertEqual(row["execution_ids"], [])
+        self.assertIn('"can_publish": false', self.model_inputs[0])
+        self.assertFalse(any("任务已发布" in text for _, text in self.http.texts()))
+
+    def test_feishu_progress_question_receives_tasks_dependencies_and_verified_delivery(self):
+        execution, _ = self.ready_delivery()
+        before = self.workflow.load(execution)
+        self.model_payload = {"reply": "已读取本次任务数据。", "objective": None}
+        self.handle(event(actor="ou_member", text="当前谁负责什么，测试及验收结果如何？"))
+        self.wait_for(lambda: any("已读取本次任务数据。" in text for _, text in self.http.texts()))
+        prompt = next(text for text in self.model_inputs if "当前谁负责什么" in text)
+        snapshot = json.loads(prompt.split("以本次状态为准]\n", 1)[1])["tasks"][0]
+        self.assertEqual(snapshot["execution_id"], execution)
+        self.assertEqual(snapshot["tasks"]["builder"]["status"], "done")
+        self.assertTrue(snapshot["tasks"]["builder"]["assignee"])
+        self.assertEqual(snapshot["tasks"]["builder"]["parents"][0]["role"], "researcher")
+        self.assertEqual(snapshot["tasks"]["reviewer"]["verdict"], "PASS")
+        self.assertTrue(snapshot["verification"]["platform"]["matches_current_inputs"])
+        self.assertEqual(snapshot["acceptance"]["status"], "READY_FOR_ACCEPTANCE")
+        after = self.workflow.load(execution)
+        for key in ("rounds", "workflow_state", "decisions_log", "approval"):
+            self.assertEqual(after.get(key), before.get(key))
 
     def test_network_outage_does_not_block_or_undo_web_decision(self):
         e = self.task()

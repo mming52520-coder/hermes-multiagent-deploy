@@ -26,6 +26,139 @@ class TimelineTest(unittest.TestCase):
         card = next(item for item in data["items"] if item["type"] == "card")
         return module, advisor, row, execution, card
 
+    def native_case(self, execution):
+        case = v2.WorkflowV2Test()
+        case.workflow, case.execution = self.workflow, execution
+        case.calls, case.image_id, case.exit_code = [], "sha256:offline-context", 0
+        for item in (patch.object(type(self.workflow), "readiness", return_value={"ready": True, "checks": []}),
+                     patch.object(self.api.core_module().workflow_runtime, "dispatch", return_value={"spawned": []})):
+            item.start(); self.addCleanup(item.stop)
+        return case
+
+    def test_context_tracks_native_owners_states_and_dependency_changes(self):
+        _, _, row, execution, _ = self.prepare()
+        case = self.native_case(execution)
+        context = lambda: self.api.architect_context(self.workflow, self.controller.load(self.workflow, row["id"]))["tasks"][0]
+        waiting = context()["tasks"]
+        self.assertEqual(waiting["builder"]["waiting_for"][0]["id"], waiting["researcher"]["id"])
+        self.assertEqual({item["role"] for item in waiting["researcher"]["children"]}, {"builder", "tester"})
+        self.assertTrue(all(task["assignee"] for task in waiting.values()))
+        case.research()
+        with v2.fixtures.connect_closing(board=self.workflow.board) as conn:
+            self.assertIsNotNone(self.workflow.kb.claim_task(conn, case.row()["tasks"]["builder"]))
+        case.completed("tester", {"status": "TESTS_READY", "verification": ["baseline expected failure"]})
+        before = self.workflow.load(execution)
+        with patch.object(self.workflow, "advance") as advance, patch.object(self.workflow, "verify_platform") as verify:
+            current = context()
+        advance.assert_not_called(); verify.assert_not_called()
+        self.assertEqual(self.workflow.load(execution), before)
+        self.assertEqual(current["tasks"]["researcher"]["status"], "done")
+        self.assertEqual(current["tasks"]["builder"]["status"], "running")
+        self.assertIsNotNone(current["tasks"]["builder"]["run_id"])
+        self.assertEqual(current["tasks"]["builder"]["waiting_for"], [])
+        self.assertEqual(current["tasks"]["tester"]["reported_status"], "TESTS_READY")
+        self.assertEqual(current["tasks"]["reviewer"]["status"], "triage")
+        self.assertEqual([item["role"] for item in current["tasks"]["reviewer"]["waiting_for"]], ["builder"])
+        self.assertFalse(current["verification"]["platform"]["available"])
+        self.assertEqual(current["acceptance"]["status"], "NOT_ACCEPTED")
+
+    def test_context_reports_block_reason_and_native_failure_separately(self):
+        module, _, _, execution, _ = self.prepare()
+        case = self.native_case(execution)
+        case.research()
+        with v2.fixtures.connect_closing(board=self.workflow.board) as conn:
+            builder, tester = (case.row()["tasks"][role] for role in ("builder", "tester"))
+            self.assertIsNotNone(self.workflow.kb.claim_task(conn, builder))
+            self.assertTrue(self.workflow.kb.block_task(conn, builder, kind="needs_input", reason="Need the engineer to choose the output format"))
+            self.assertIsNotNone(self.workflow.kb.claim_task(conn, tester))
+            # Inject a failed native run into the isolated board, preserving its diagnostic text.
+            conn.execute("UPDATE task_runs SET status='failed', outcome='failed', error=? WHERE task_id=?",
+                         ("test worker connection failed", tester))
+            conn.execute("UPDATE tasks SET status='blocked', last_failure_error=? WHERE id=?",
+                         ("test worker connection failed", tester))
+            conn.commit()
+        self.assertEqual(case.advance()["state"], "HUMAN_REQUIRED")
+        snapshot = module.execution_context(self.workflow, self.workflow.load(execution))
+        self.assertEqual(snapshot["tasks"]["builder"]["block_kind"], "needs_input")
+        self.assertEqual(snapshot["tasks"]["builder"]["block_reason"], "Need the engineer to choose the output format")
+        self.assertEqual(snapshot["tasks"]["tester"]["outcome"], "failed")
+        self.assertEqual(snapshot["tasks"]["tester"]["error"], "test worker connection failed")
+        self.assertEqual(snapshot["tasks"]["tester"]["last_failure_error"], "test worker connection failed")
+        self.assertIn("retry-worker", snapshot["pending_decision"]["actions"])
+        self.assertEqual(snapshot["acceptance"]["status"], "NOT_ACCEPTED")
+        with v2.fixtures.connect_closing(board=self.workflow.board) as conn:
+            self.assertTrue(self.workflow.kb.unblock_task(conn, builder))
+        resumed = module.execution_context(self.workflow, self.workflow.load(execution))["tasks"]["builder"]
+        self.assertEqual(resumed["status"], "ready")
+        self.assertIsNone(resumed["block_kind"])
+        self.assertIsNone(resumed["block_reason"])
+
+    def test_context_retains_finished_tasks_and_rechecks_delivery_evidence(self):
+        module, _, row, execution, _ = self.prepare()
+        case = self.native_case(execution)
+        case.ready()
+        snapshot = module.execution_context(self.workflow, self.workflow.load(execution))
+        self.assertEqual(snapshot["acceptance"]["status"], "READY_FOR_ACCEPTANCE")
+        self.assertEqual(snapshot["delivery"]["changed_files"], ["LICENSE"])
+        self.assertEqual(snapshot["tasks"]["researcher"]["artifacts"], ["DESIGN.md"])
+        self.assertEqual(snapshot["tasks"]["reviewer"]["verdict"], "PASS")
+        proof = snapshot["verification"]["platform"]
+        self.assertTrue(proof["log_matches"] and proof["matches_current_inputs"])
+        self.assertEqual(proof["receipt"]["status"], "PASS")
+        self.assertIn("Independent test cases", proof["log_tail"])
+        self.workflow.accept(execution)
+        other = self.client.post(self.url + "/architect/tasks", json={"objective": "Synthetic cancelled task"}).json()["execution_id"]
+        self.workflow.reject(other, "Scope cancelled")
+        conversation = self.controller.load(self.workflow, row["id"])
+        finished = {item["execution_id"]: item for item in self.api.architect_context(self.workflow, conversation)["tasks"]}
+        self.assertEqual(finished[execution]["acceptance"]["status"], "ACCEPTED")
+        self.assertEqual(finished[other]["state"], "REJECTED")
+        log = self.workflow.path(execution) / "round-0/platform-verification.log"
+        log.write_text("altered test evidence")
+        altered = module.execution_context(self.workflow, self.workflow.load(execution))
+        self.assertFalse(altered["verification"]["platform"]["log_matches"])
+        self.assertEqual(altered["acceptance"]["status"], "NOT_ACCEPTED")
+        self.assertIn("altered", altered["acceptance"]["reason"])
+        log.unlink()
+        missing = self.api.architect_context(self.workflow, conversation)["tasks"][0]
+        self.assertFalse(missing["verification"]["platform"]["available"])
+        self.assertIn("日志缺失", missing["verification"]["platform"]["error"])
+        self.assertEqual(missing["acceptance"]["status"], "NOT_ACCEPTED")
+
+    def test_context_exposes_stale_receipt_and_keeps_reused_research_artifacts(self):
+        module, _, _, execution, _ = self.prepare()
+        case = self.native_case(execution)
+        case.ready()
+        receipt = self.workflow.path(execution) / "round-0/platform-verification.json"
+        original = receipt.read_text()
+        data = json.loads(original); data["round"] = 99
+        receipt.write_text(json.dumps(data))
+        snapshot = module.execution_context(self.workflow, self.workflow.load(execution))
+        self.assertFalse(snapshot["verification"]["platform"]["matches_current_inputs"])
+        self.assertEqual(snapshot["acceptance"]["status"], "NOT_ACCEPTED")
+        receipt.write_text(original)
+        self.workflow.request_changes(execution, "Adjust the output layout", 0)
+        revised = module.execution_context(self.workflow, self.workflow.load(execution))
+        self.assertEqual(revised["round"], 1)
+        self.assertEqual(revised["tasks"]["researcher"]["round"], 0)
+        self.assertIn("DESIGN.md", revised["tasks"]["researcher"]["artifacts"])
+        self.assertFalse(revised["verification"]["platform"]["available"])
+
+    def test_progress_snapshot_does_not_wait_for_verification_or_recreate_missing_db(self):
+        module, _, _, execution, _ = self.prepare()
+        manifest = self.workflow.load(execution)
+        manifest["workflow_state"] = "VERIFYING"
+        self.workflow.save(manifest)
+        with patch.object(self.workflow, "status", side_effect=AssertionError("verification owns the execution lock")):
+            snapshot = module.execution_context(self.workflow, manifest)
+        self.assertEqual(snapshot["state"], "VERIFYING")
+        self.assertEqual(snapshot["acceptance"]["status"], "NOT_ACCEPTED")
+        database = self.workflow.kb.kanban_db_path(board=self.workflow.board)
+        database.unlink()
+        missing = module.execution_context(self.workflow, manifest)
+        self.assertTrue(all(task["status"] == "missing" for task in missing["tasks"].values()))
+        self.assertFalse(database.exists())
+
     def test_readonly_get_does_not_create_an_architect(self):
         result = self.client.get(self.url + "/architect")
         self.assertEqual(result.status_code, 200)
@@ -228,10 +361,14 @@ class TimelineTest(unittest.TestCase):
         with patch.object(self.controller, "make_agent", return_value=Agent()):
             self.assertEqual(advisor.advise(self.workflow, execution)["source"], "model")
         self.assertEqual(contexts[0]["current_request"], request)
+        self.assertEqual(contexts[0]["tasks"]["builder"]["waiting_for"][0]["role"], "researcher")
+        self.assertIn("assignee", contexts[0]["tasks"]["tester"])
+        self.assertEqual(contexts[0]["acceptance"]["status"], "NOT_ACCEPTED")
         with patch.object(self.controller, "start", return_value={"status": "running"}) as start:
             result = self.client.post(self.url + "/architect/messages", json={"message": "本轮需要验收什么？"})
         self.assertEqual(result.status_code, 200, result.text)
         self.assertEqual(start.call_args.args[-1]["tasks"][0]["current_request"], request)
+        self.assertEqual(start.call_args.args[-1]["tasks"][0]["tasks"], contexts[0]["tasks"])
         self.assertEqual(self.workflow.load(execution)["workflow_state"], "WAITING_APPROVAL")
         self.assertFalse(self.workflow.load(execution)["approved_write"])
 

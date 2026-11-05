@@ -19,7 +19,9 @@ _active = set()
 _guard = threading.Lock()
 _log = logging.getLogger(__name__)
 PROMPT = """你是项目架构师，只提供建议，不执行操作。根据给出的证据，用不超过300字给出建议、理由和需用户核对的风险。
-current_request 非空时，以其中的本轮人工修改或修复要求为准，不用初始 objective 的旧限制覆盖它；是否已批准或验收仍以 state 为准。
+current_request 非空时，以其中的本轮人工修改或修复要求为准，不用初始 objective 的旧限制覆盖它。
+依赖、阻塞及交付以任务快照为准；角色的 verification/verdict 是成员报告，平台 verification 必须存在、
+log_matches 和 matches_current_inputs 为 true 且 receipt.status 为 PASS 才能报告测试通过。验收以 acceptance.status 及 reason 为准。
 不要声称已经批准、验收、修改或运行任何内容。未知信息明确说未知。只返回 JSON：{"reply":"建议","objective":null}。"""
 
 
@@ -49,13 +51,10 @@ def advise(workflow, execution: str) -> dict:
                 if cancelled.is_set():
                     return
                 import json
-                files = manifest["rounds"][-1].get("candidate_files")
-                source = manifest["source_files"]
-                changed = sorted(key for key in files.keys() | source.keys() if files.get(key) != source.get(key)) if files is not None else []
-                context = {"objective": manifest["objective"], "state": card["state"], "reasons": card["reasons"],
-                           "current_request": manifest["failures"][-1] if manifest["rounds"][-1]["number"] else None,
+                snapshot = timeline.execution_context(workflow, manifest)
+                context = {**snapshot, "reasons": card["reasons"],
                            "findings": tasks.get("reviewer", {}).get("findings", []),
-                           "changed_files": changed[:50],
+                           "changed_files": snapshot["delivery"]["changed_files"],
                            "decisions": workflow_policy.read_decisions(workflow.root, workflow.board)}
                 reply = agent.run_conversation(json.dumps(context, ensure_ascii=False), system_message=PROMPT)
                 if reply.get("error"):

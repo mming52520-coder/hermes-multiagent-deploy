@@ -371,7 +371,7 @@ def mirror_turn(workflow, row, channel, text, reply, card_id, started):
                     break
         if reply:
             client.send_text(
-                chat, "总控台对话：" + reply, reply_to=reply_to, delivery_id=_delivery_id(*identity, "assistant")
+                chat, reply, reply_to=reply_to, delivery_id=_delivery_id(*identity, "assistant")
             )
         elif channel == "feishu":
             client.send_text(chat, "本次回复失败，请在总控台对话查看原因后重试。")

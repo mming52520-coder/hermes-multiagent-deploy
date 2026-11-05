@@ -20,6 +20,9 @@ SOURCES = (
     "scripts/workflow_runtime.py", "scripts/workflow_policy.py", "scripts/workflow_notify.py",
     "scripts/workflow_models.py",
     "scripts/workflow_conversation.py", "scripts/workflow_activity.py",
+    "scripts/workflow_skills.py",
+    "skills/workflow-architecture/SKILL.md", "skills/workflow-investigation/SKILL.md",
+    "skills/workflow-implementation/SKILL.md",
     "scripts/workflow_timeline.py", "scripts/workflow_advisor.py", "scripts/workflow_feishu.py",
     "scripts/workflow_feishu_client.py", "scripts/configure-feishu-bridge.sh", "scripts/configure_feishu_bridge.py",
     "tests/test_workflow_feishu.py", "docs/FEISHU_BRIDGE_ZH.md",
@@ -32,6 +35,11 @@ SOURCES = (
     "tests/check_workflow_writes_v0225.py",
     "tests/test_workflow.py", "tests/test_workflow_v2.py", "tests/test_workflow_automation.py",
     "tests/test_workflow_conversation.py", "tests/test_workflow_app.py",
+    "tests/test_workflow_skills.py",
+    "tests/replay_role_skills.py",
+    "tests/fixtures/role_skill_normal.json", "tests/fixtures/role_skill_architecture.json",
+    "tests/fixtures/role_skill_status.json",
+    "docs/ROLE_SKILLS.md", "docs/ROLE_SKILLS_EVALUATION.md",
     "tests/test_workflow_timeline.py", "tests/test_workflow_policy.py",
     "docs/AUTOMATION_ZH.md", "docs/ARCHITECT_CHAT_REVIEW.md", "update-workflow-plugin.sh",
     "docs/WORKFLOW_APP_BUTTONS_ZH.md",
@@ -48,6 +56,8 @@ def package(source: Path, output: Path) -> None:
     guide = (REPOSITORY / "docs/LOCAL_HERMES_V0225.md").read_bytes().replace(b"(WORKFLOW_APP_BUTTONS_ZH.md)", b"(docs/WORKFLOW_APP_BUTTONS_ZH.md)")
     guide = guide.replace(b"(API_PROVIDER_DEFAULTS_ZH.md)", b"(docs/API_PROVIDER_DEFAULTS_ZH.md)")
     guide = guide.replace(b"(FEISHU_BRIDGE_ZH.md)", b"(docs/FEISHU_BRIDGE_ZH.md)")
+    guide = guide.replace(b"(ROLE_SKILLS.md)", b"(docs/ROLE_SKILLS.md)")
+    guide = guide.replace(b"(ROLE_SKILLS_EVALUATION.md)", b"(docs/ROLE_SKILLS_EVALUATION.md)")
     files.update({"README.md": guide,
                   "LICENSE": (REPOSITORY / "LICENSE").read_bytes(),
                   "UPSTREAM_LICENSE": (source / "LICENSE").read_bytes()})

@@ -22,11 +22,11 @@ import time
 if __package__:
     from .configure_profiles import load_env_file, read_yaml, worker_mounts, write_yaml
     from .hermes_baseline import verify_workflow_source as verify_source
-    from . import workflow_runtime, workflow_policy, workflow_notify, workflow_feishu
+    from . import workflow_runtime, workflow_policy, workflow_notify, workflow_feishu, workflow_skills
 else:
     from configure_profiles import load_env_file, read_yaml, worker_mounts, write_yaml
     from hermes_baseline import verify_workflow_source as verify_source
-    import workflow_runtime, workflow_policy, workflow_notify, workflow_feishu
+    import workflow_runtime, workflow_policy, workflow_notify, workflow_feishu, workflow_skills
 
 LEGACY_ROLES = ("researcher", "builder", "reviewer", "orchestrator")
 ROLES = ("researcher", "builder", "tester", "reviewer")
@@ -219,12 +219,16 @@ class Workflow:
         profile = get_profile_dir(name)
         if not profile.exists():
             create_profile(name, clone_from=role, no_alias=True)
-            if self.modern(self.load(execution)):
-                souls = Path(__file__).resolve().parent / "souls"
-                if not souls.is_dir():
-                    souls = Path(__file__).resolve().parents[1] / "souls"
-                soul = souls / f"{role}.md"
-                shutil.copyfile(soul, profile / "SOUL.md")
+        manifest = self.load(execution)
+        # Retry incomplete initialization before binding the task. Once bound,
+        # approval/retry must preserve that task's original guidance.
+        if self.modern(manifest) and role not in manifest["rounds"][round_number]["tasks"]:
+            souls = Path(__file__).resolve().parent / "souls"
+            if not souls.is_dir():
+                souls = Path(__file__).resolve().parents[1] / "souls"
+            soul = souls / f"{role}.md"
+            shutil.copyfile(soul, profile / "SOUL.md")
+            workflow_skills.install_worker_skill(profile, role)
         config = read_yaml(profile / "config.yaml")
         config.setdefault("terminal", {})
         config.setdefault("platform_toolsets", {})
@@ -368,6 +372,8 @@ class Workflow:
                 idempotency_key=f"{execution}:{row['number']}:{role}",
                 max_runtime_seconds={"researcher":1200,"builder":3600,"tester":1800,"reviewer":1800,"orchestrator":900}[role],
                 max_retries=1, board=self.board,
+                skills=([workflow_skills.ROLE_SKILLS[role]]
+                        if self.modern(manifest) and role in workflow_skills.ROLE_SKILLS else None),
             )
             row["tasks"][role] = tid
             self.save(manifest)

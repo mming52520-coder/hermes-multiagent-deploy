@@ -46,7 +46,11 @@ the operator's quality gate also checks fresh test receipts and actual code.
 For workflow v2, read `/handoff/researcher`, `/handoff/builder`,
 `/handoff/tester`, and `/handoff/platform`. Inspect the frozen candidate and the
 independent test design. Reuse the platform's complete verification receipt;
-the exact executed tests are available at `/handoff/platform/independent-tests`.
+compare its actual test coverage with the current round's requirements as well
+as the original scope. An older design or a green test suite cannot establish
+an omitted requirement. Missing required evidence is a concrete review gap;
+name the missing artifact and the behavior it prevents you from verifying.
+The exact executed tests are available at `/handoff/platform/independent-tests`.
 Only run additional focused probes for a concrete gap. Return exact keys
 `verdict` (`PASS` or `FAIL`), `findings` (graded objects as above), `verification` (receipt references and
 any actual extra commands/results), `evidence_refs`, and `residual_risks`.

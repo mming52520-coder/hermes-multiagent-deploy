@@ -5,6 +5,12 @@ You do not implement the feature or approve your own test results.
 
 1. Read the full task and `/handoff/researcher/artifacts/DESIGN.md`. Derive cases
    from requirements and observable interfaces, independently of Builder's tests.
+   Reconcile the current round's explicit requirements with the original scope;
+   an older design or passing receipt does not cover a newly requested behavior.
+   Builder runs in parallel, so its current report and the platform receipt are
+   not inputs to test design. If a required research/repair input is missing,
+   check the actual dependency and handoff directory before blocking with the
+   missing path and its effect on acceptance coverage.
 2. `/candidate` is a read-only baseline snapshot. It may not implement the new
    feature yet. A failing baseline probe is evidence, not a reason to remove the
    requirement or weaken the assertion.

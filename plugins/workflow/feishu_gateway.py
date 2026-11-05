@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import copy
+from functools import partial
 import json
 import logging
 from pathlib import Path
@@ -191,6 +192,8 @@ def dispatch(event, gateway):
                         api.architect_context(workflow, row),
                         channel="feishu",
                         name=name,
+                        publish_task=(partial(api.publish_conversation_task, settings, workflow,
+                                              by="feishu:" + actor, name=name) if actor in approvers else None),
                     )
                 except ValueError:
                     client.send_text(chat, "总控台暂时无法接收这条消息，请稍后重试。")

@@ -612,6 +612,10 @@
   };
   function cx() { return Array.from(arguments).filter(Boolean).join(" "); }
   function short(value) { return value ? String(value).slice(0, 10) : "尚未生成"; }
+  function controllerReply(value) {
+    const text = value.replace(/^(?:\s*总控台对话\s*[:：]?\s*)+/, "");
+    return "总控台对话".startsWith(text.trim()) ? "" : text;
+  }
   function date(value, locale) { return new Intl.DateTimeFormat(locale === "en" ? "en" : "zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value * 1000)); }
   function message(error) {
     let raw = String(error && error.message || error);
@@ -950,7 +954,7 @@
     const pending = conversation?.pending;
     const partial = pending?.text?.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)/);
     let streamed = "";
-    if (partial) { try { streamed = JSON.parse('"' + partial[1] + '"'); } catch (_) { streamed = ""; } }
+    if (partial) { try { streamed = controllerReply(JSON.parse('"' + partial[1] + '"')); } catch (_) { streamed = ""; } }
     useEffect(() => {
       if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
     }, [conversation?.messages?.length, streamed]);
@@ -1145,7 +1149,7 @@
     const pending = data?.conversation?.pending;
     let streamed = "";
     const partial = pending?.text?.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)/);
-    if (partial) { try { streamed = JSON.parse('"' + partial[1] + '"'); } catch (_) { /* wait for a complete escape */ } }
+    if (partial) { try { streamed = controllerReply(JSON.parse('"' + partial[1] + '"')); } catch (_) { /* wait for a complete escape */ } }
     async function send(event) {
       event.preventDefault();
       if (!writable || waiting || !text.trim()) return;

@@ -142,6 +142,16 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(self.workflow.status(self.execution)["acceptance"]["status"],"ACCEPTED")
         self.assertEqual(wc.git(self.project,"status","--porcelain"),"")
 
+    def test_legacy_controller_context_reads_existing_verification_receipts(self):
+        import workflow_timeline
+        self.finish()
+        snapshot = workflow_timeline.execution_context(self.workflow, self.workflow.load(self.execution))
+        self.assertEqual(snapshot["acceptance"]["status"], "READY_FOR_ACCEPTANCE")
+        self.assertEqual(snapshot["tasks"]["builder"]["status"], "done")
+        for role in ("builder", "reviewer"):
+            self.assertTrue(snapshot["verification"][role]["matches_current_inputs"])
+            self.assertTrue(snapshot["verification"][role]["log_matches"])
+
     def test_native_done_cannot_forge_acceptance(self):
         self.finish(verify=False)
         with self.assertRaisesRegex(wc.Rejected,"missing operator verification"):

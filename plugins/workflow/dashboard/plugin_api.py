@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 from contextlib import closing
+from functools import partial
 import importlib
 import importlib.util
 import json
@@ -83,16 +84,38 @@ def architect_context(workflow, row: dict) -> dict:
     tasks, cards = [], []
     for execution in row.get("execution_ids", []):
         manifest = workflow.load(execution)
-        states = module.task_states(workflow, manifest)
-        card = module.card_for(manifest, states)
+        snapshot = module.execution_context(workflow, manifest)
+        card = module.card_for(manifest, snapshot["tasks"])
         if card:
             cards.append(card)
-        if manifest.get("workflow_state") not in {"ACCEPTED", "REJECTED"}:
-            tasks.append({"execution_id": execution, "objective": manifest["objective"],
-                          "current_request": manifest["failures"][-1] if manifest["rounds"][-1]["number"] else None,
-                          "state": manifest.get("workflow_state"), "tasks": states})
+        tasks.append(snapshot)
     return {"project": workflow.project.name, "tasks": tasks, "cards": cards,
+            "draft": row.get("objective", ""), "submitted_objective": row.get("submitted_objective", ""),
             "decisions": core_module().workflow_policy.read_decisions(workflow.root, workflow.board)}
+
+
+def publish_conversation_task(settings: dict, workflow, row: dict, objective: str, *, by: str, name: str) -> dict:
+    # start() owns the conversation lock; reuse the same task identity and decision gate as the buttons.
+    manifest = conversations_module().submit_locked(workflow, row, objective)
+    execution = manifest["execution_id"]
+    try:
+        if manifest.get("workflow_version", 1) < 2 or manifest["rounds"][-1]["number"] != 0:
+            raise ValueError("后续整改请在原任务卡上操作，不能通过重复发布启动新一轮。")
+        state = manifest.get("workflow_state")
+        if state == "REJECTED":
+            raise ValueError("这项任务已决定不做，不能重复发布。")
+        if manifest["approved_write"]:
+            if state == "WAITING_APPROVAL":
+                return workflow.advance(execution)
+            return {"execution_id": execution, "state": state}
+        if state != "WAITING_APPROVAL":
+            raise ValueError("请在原任务卡上处理当前状态，不能通过重复发布重新授权。")
+        card = timeline_module().card_for(manifest, {})
+        return decide(settings, ArchitectDecision(card_id=card["card_id"], action="approve",
+                      reason="总控根据本次对话整理需求并发布，直接进入首轮执行。"),
+                      by=by, name=name, execution_id=execution)
+    finally:
+        core_module().workflow_feishu.sync_progress(workflow, execution)
 
 
 def architect_settings(request: Request) -> dict:
@@ -133,7 +156,8 @@ def architect_message(request: Request, body: ConversationMessage):
     row = conversations_module().architect(workflow)
     try:
         return conversations_module().start(workflow, row["id"], body.message,
-                                             architect_context(workflow, row), channel="web")
+                                             architect_context(workflow, row), channel="web",
+                                             publish_task=partial(publish_conversation_task, settings, workflow, by="web", name="你"))
     except (ValueError, OSError) as exc:
         raise HTTPException(409, str(exc)) from exc
 
@@ -499,7 +523,8 @@ def conversation_message(request: Request, conversation: str, body: Conversation
         row = conversations_module().load(workflow, conversation)
         if row.get("kind") == "architect":
             return conversations_module().start(workflow, conversation, body.message,
-                                                  architect_context(workflow, row), channel="web")
+                                                  architect_context(workflow, row), channel="web",
+                                                  publish_task=partial(publish_conversation_task, settings, workflow, by="web", name="你"))
         context = {"project": workflow.project.name,
                    "decisions": core_module().workflow_policy.read_decisions(workflow.root, workflow.board)}
         if row["execution_id"]:
@@ -633,22 +658,12 @@ def evidence(execution: str, round_number: int, role: Literal["builder", "review
     manifest = load_manifest(settings, execution)
     if round_number not in [row["number"] for row in manifest["rounds"]]:
         raise HTTPException(404, "找不到这轮执行。")
-    directory = execution_directory(settings, execution) / f"round-{round_number}"
-    receipt_file = directory / f"{role}-verification.json"
-    log = directory / f"{role}-verification.log"
-    if not receipt_file.is_file():
-        return {"role": role, "available": False}
-    if not log.is_file():
-        raise HTTPException(409, "验证日志缺失，证据不完整。")
-    if not receipt_file.resolve().is_relative_to(directory.resolve()) or not log.resolve().is_relative_to(directory.resolve()):
-        raise HTTPException(403, "证据文件不在允许范围内。")
-    receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
-    with log.open("rb") as stream:
-        stream.seek(max(0, log.stat().st_size - 16384))
-        tail = stream.read().decode("utf-8", errors="replace")
-    # Do not expose dotenvs or arbitrary task metadata as browser downloads.
-    return {"available": True, "receipt": receipt, "log_tail": tail,
-            "log_matches": hashlib.sha256(log.read_bytes()).hexdigest() == receipt["log_sha256"]}
+    try:
+        return timeline_module().verification_evidence(bound_workflow(settings), execution, round_number, role)
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 def require_action(request: Request, settings: dict, confirmed: bool = True) -> None:
