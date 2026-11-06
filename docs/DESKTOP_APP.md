@@ -6,6 +6,18 @@
 
 ## 安装与启动
 
+从 GitHub Releases 下载桌面接入包和对应的 SHA-256 文件。首次安装适用于 Ubuntu 24.04 的图形会话和 Hermes v0.22.5 的干净 Git 安装，固定提交为 `bf0203a794a07aac3ff764972ab9087baa4e4f4e`。系统需有 `python3-gi`、`gir1.2-gtk-3.0`、`gir1.2-webkit2-4.1`、`libgtk-3-bin` 和 Git。Hermes 可用[固定版本的官方安装器](https://github.com/NousResearch/hermes-agent/blob/bf0203a794a07aac3ff764972ab9087baa4e4f4e/scripts/install.sh)安装，传入 `--commit` 和上述 SHA。
+
+校验归档后解压，在 `hermes-workflow-local` 目录运行一次：
+
+```bash
+./install-desktop.sh
+```
+
+安装命令会启用工作流插件，安装包内前端和桌面入口，并打开默认只读的示例工作台。之后从桌面或应用菜单点击「多 Agent 工作流」启动。解压目录可在安装成功后移走。绑定真实项目和启用任务操作见 [Hermes 本地接入说明](https://github.com/mming52520-coder/hermes-multiagent-deploy/blob/2572ef238161b432b3aed150b9c6e7e150d45e34/docs/LOCAL_HERMES_V0225.md)。
+
+### 已有工作流的桌面入口
+
 前提：`hermes` 已在 `PATH` 中，工作流插件已安装，中文前端已构建，系统 `/usr/bin/python3` 可导入 `gi`、`Gtk 3.0` 和 `WebKit2 4.1`。
 
 从仓库根目录运行，`HERMES_WEB_DIST` 指向当前实际使用的前端目录：

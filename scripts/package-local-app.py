@@ -12,6 +12,8 @@ import tarfile
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 SOURCES = (
+    "install-desktop.sh", "scripts/install-workflow-desktop.py", "scripts/workflow_desktop.py",
+    "scripts/workflow-desktop.svg", "docs/DESKTOP_APP.md",
     "plugins/workflow/plugin.yaml", "plugins/workflow/__init__.py", "plugins/workflow/feishu_gateway.py",
     "plugins/workflow/dashboard/manifest.json", "plugins/workflow/dashboard/plugin_api.py",
     "plugins/workflow/dashboard/app.js", "plugins/workflow/dashboard/app.css",
@@ -93,7 +95,7 @@ def package(source: Path, output: Path) -> None:
         with tarfile.open(fileobj=compressed, mode="w") as archive:
             for name, data in sorted(files.items()):
                 entry = tarfile.TarInfo("hermes-workflow-local/" + name)
-                entry.size, entry.mode, entry.mtime = len(data), 0o644, 0
+                entry.size, entry.mode, entry.mtime = len(data), 0o755 if name == "install-desktop.sh" else 0o644, 0
                 archive.addfile(entry, io.BytesIO(data))
     checksum = hashlib.sha256(output.read_bytes()).hexdigest()
     output.with_name(output.name + ".sha256").write_text(checksum + "  " + output.name + "\n")
