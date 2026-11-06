@@ -73,6 +73,32 @@ class ConversationTest(unittest.TestCase):
             return Agent()
         return patch.object(self.controller, "make_agent", side_effect=factory)
 
+    def test_document_publication_binds_type_and_reuses_task(self):
+        objective = "只交付一份方案报告，包含方案比较及可追溯证据；不实现代码。"
+        reply = {"reply": "准备发布方案任务。", "objective": objective, "publish": True, "deliverable_type": "document"}
+        core = self.api.core_module()
+        with self.model_reply(reply), patch.object(core.Workflow, "readiness", return_value={"ready": True}), \
+                patch.object(core.workflow_runtime, "dispatch", return_value={"spawned": []}):
+            for delivery in ("document", "code"):
+                reply["deliverable_type"] = delivery
+                response = self.client.post(self.url + "/architect/messages", json={"message": "创建方案任务"})
+                result = self.wait(response.json()["id"])
+                self.assertEqual(result["status"], "idle", result["error"])
+                self.assertEqual(len(result["execution_ids"]), 1)
+        manifest = self.workflow.load(result["execution_ids"][0])
+        self.assertEqual(manifest["deliverable_type"], "document")
+        self.assertEqual(manifest["test_command"], core.DOCUMENT_TEST_COMMAND)
+        self.assertTrue(manifest["approved_write"])
+
+    def test_invalid_delivery_type_does_not_publish_or_break_chat_view(self):
+        reply = {"reply": "Invalid typed proposal.", "objective": "A task", "publish": True, "deliverable_type": "skip-tests"}
+        with self.model_reply(reply):
+            response = self.client.post(self.url + "/architect/messages", json={"message": "创建任务"})
+            result = self.wait(response.json()["id"])
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["execution_ids"], [])
+        self.assertIn("unsupported deliverable", result["error"])
+
     def test_architect_turn_loads_packaged_guidance_with_existing_protocol(self):
         systems = []
         with self.model_reply({"reply": "讨论范围。", "objective": None, "publish": False}, system_messages=systems):
@@ -81,6 +107,63 @@ class ConversationTest(unittest.TestCase):
             self.assertEqual(self.wait(response.json()["id"])["execution_ids"], [])
         guidance = self.controller.workflow_skills.architect_guidance()
         self.assertEqual(systems, [self.controller.PROMPT + "\n\n" + guidance])
+
+    def test_resumed_controller_rebuilds_changed_guidance_once_and_keeps_history(self):
+        from agent.conversation_loop import _restore_or_build_system_prompt
+        from hermes_state_registry import acquire, release
+
+        row = self.controller.architect(self.workflow)
+        db = acquire(self.workflow.root / "state.db")
+        self.addCleanup(release, db)
+        old = "LEGACY_BUTTON_ONLY: cannot publish; use the task button."
+        db.update_system_prompt(row["session_id"], old)
+        db.append_message(row["session_id"], "user", content="Keep this confirmed requirement.")
+        db.append_message(row["session_id"], "assistant", content="Use the task button.")
+        original = db.get_messages_as_conversation(row["session_id"])
+        db.create_session("unrelated-controller", "workflow-controller", system_prompt=old)
+        observed, builds = [], []
+
+        def factory(workflow, current_row, session_db):
+            # Actual native prompt restoration and persistence; no provider call.
+            agent = run_agent.AIAgent(
+                model="fixture-model", provider="openai-api", api_key="synthetic-test-key",
+                base_url="https://example.invalid/v1", api_mode="chat_completions",
+                enabled_toolsets=[], quiet_mode=True, skip_context_files=True, skip_memory=True,
+                skip_background_review=True, platform="workflow-controller", cwd=str(workflow.project),
+                session_id=current_row["session_id"], session_db=session_db,
+            )
+            build = agent._build_system_prompt
+            def tracked_build(prompt):
+                builds.append(prompt)
+                return build(prompt)
+            agent._build_system_prompt = tracked_build
+            def turn(text, **kwargs):
+                _restore_or_build_system_prompt(agent, kwargs["system_message"], kwargs["conversation_history"])
+                observed.append(agent._cached_system_prompt)
+                session_db.append_message(agent.session_id, "user", content=kwargs["persist_user_message"])
+                reply = json.dumps({"reply": "Capability question only.", "objective": None, "publish": False})
+                session_db.append_message(agent.session_id, "assistant", content=reply)
+                return {"final_response": reply}
+            agent.run_conversation = turn
+            return agent
+
+        guidance = self.controller.workflow_skills.architect_guidance()
+        before = set(self.workflow.store.glob("*/execution.json"))
+        with patch.object(self.controller, "make_agent", side_effect=factory):
+            for instruction in (guidance, guidance, guidance + "\nUpdated controller guidance."):
+                with patch.object(self.controller.workflow_skills, "architect_guidance", return_value=instruction):
+                    response = self.client.post(self.url + "/architect/messages", json={"message": "现在能直接发布任务吗？"})
+                    self.assertEqual(response.status_code, 200)
+                    result = self.wait(response.json()["id"])
+                    self.assertEqual(result["status"], "idle", result["error"])
+                    self.assertIn(self.controller.PROMPT + "\n\n" + instruction, observed[-1])
+                    self.assertNotIn(old, observed[-1])
+        self.assertEqual(len(builds), 2)
+        self.assertEqual(observed[0], observed[1])
+        self.assertNotEqual(observed[1], observed[2])
+        self.assertEqual(db.get_messages_as_conversation(row["session_id"])[:2], original)
+        self.assertEqual(db.get_session("unrelated-controller")["system_prompt"], old)
+        self.assertEqual(set(self.workflow.store.glob("*/execution.json")), before)
 
     def test_architect_publishes_and_starts_from_chat_and_reuses_repeated_task(self):
         core = self.api.core_module()

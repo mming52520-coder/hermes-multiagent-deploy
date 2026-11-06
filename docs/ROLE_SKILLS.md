@@ -10,12 +10,14 @@
 |---|---|---|
 | 面向用户的架构师 | 网页/飞书 → `workflow_conversation.start` → 原 `PROMPT` + 受管理 `workflow-architecture/SKILL.md` 正文 → `AIAgent.run_conversation(system_message=...)` | 默认 profile 的模型；工具集为空，`skip_context_files=True`；不读取项目 SOUL 或任意全局 skill |
 | 调查与编码 | `Workflow.populate_round` → 新任务 scoped profile 复制 SOUL 和对应 SKILL.md → Kanban `task.skills` → 原生 `build_kanban_policy` → `_run_task_turns` → `build_preloaded_skills_prompt` → 真实用户输入 | 角色确定后显式预载；不是模型语义分类；原生目录仍可经 `skills_list` / `skill_view` 发现和阅读 |
-| 独立测试与审查 | 同一 scoped profile 创建流程 → 对应 SOUL → 原生 Agent 系统提示词 | 保留现有专业职责，只补本轮要求与历史证据的衔接 |
+| 独立测试与审查 | 同一 scoped profile 创建流程 → 对应 SOUL → 原生 Agent 系统提示词 | 保留现有专业职责，核对本轮要求、实际交接及输入域边界 |
 | 后台编排 | 原生 owner/dispatcher + `Workflow.advance` | 确定的依赖、预算、隔离快照、验证与验收逻辑；v2 不运行旧 `orchestrator` profile |
 
 安装器把三份 skill 放入插件的 `operator/skills/`，复制 helper 至 `operator/workflow_skills.py`，并纳入 `.managed-files.json` 哈希检查。源码运行使用仓库 `skills/`。新 scoped profile 获得该任务自己的副本；批准、重试不重写已绑定任务的指导。任务绑定前初始化中断可重新复制，避免一个已存在但不完整的 profile 永久漏载。
 
 架构师入口直接加载固定受管理文件，是工具为空时的适配，不宣称原生 skill 自动发现。Researcher/Builder 用原生显式预载；必需 skill 缺失时在调用模型前报错，不静默降级。默认 profile、已有任务、v1 和其他角色不新增 task.skills。
+
+v2 的任务正文开头由 owner 写入 `Workflow round` 和 manifest 已冻结的项目测试命令，随后经原生 `build_worker_context` 进入实际输入。放在目标长文本之前可保留这些运行事实，避免原生正文长度截断隐藏它们。round 0 即使要求“修复”也没有前轮交接；后续轮必须读 `/handoff/repair/result.json`，旧日志、独立测试及审查报告按实际存在情况使用。平台失败可能使旧 Reviewer 根本没有运行。可选文件不存在本身不构成阻塞；必需输入缺失或影响具体验收的证据缺口仍须报告。
 
 ## 职责与 skill 映射
 
@@ -31,6 +33,18 @@
 
 工具清单描述现有能力，不授予权限。Worker profile 仍过滤 delegation/code_execution，容器仍断网；只有授权 Builder 的候选可写，其他候选和 `/handoff` 只读，`/output` 可写。web 工具是否可用由独立的现有运行时策略控制，不能由 Docker 断网推断 web 被禁用。工具拒绝后可用已允许的同目的替代，不能修改审批或网络。
 
+## 文档的自动检查与语义审查
+
+纯文档任务沿用 Tester/Reviewer 的 SOUL，不新增 skill 或解析服务。原始失败中，Tester 把相同数值的不同小数写法、等价推荐措辞判为失败；仅要求“宽容解析”又使已知任务的 Tester 耗尽预算构造通用文本解析器。因此按实际可验证性划分职责：
+
+- 没有明确机器可读格式的报告：Tester 自动检查正式文件、非空内容和任务明确规定的格式，不发明标题、句式、列顺序或逐行重复输入要求。每项内容要求、原始输入、独立复算预期和待核条件写入 TEST_DESIGN 的 Reviewer checklist，不能当作已通过。
+- 明确规定了机器可读数量字段：Tester 按数值比较，保留符号、单位、字段/方案归属和指定精度；用等价表示及单一错误样本检验实际断言。不得把此规则用于放宽协议、代码接口或用户明确规定的格式。
+- Reviewer 读取确切的 TEST_DESIGN 和平台回执，逐项从正式报告与原输入核验计算、单位、选择、遗漏及内部矛盾。结构测试通过不能代替这些检查；证据不足时指出具体未验证的验收条件。所有必需语义检查有依据后才可 PASS。
+
+原任务的输入、计算模型与验收条件优先于研究建议和检查清单。blocker 必须证明报告在该模型下违反原条件，不能仅因假设输入变化或额外建议未采纳而阻塞。关键量先摘录报告实际值、原文、字段/方案、位置与适用单位（包括表头），再从输入独立计算并记录观察值与预期值的比较；不能把复算答案填成报告观察值。正文里有正确数字不能抵消表中错误单位或相互矛盾的结果。独立验证曾暴露额外条件误阻塞、单位及字段错配漏检，原失败均保留，不能混入后续保留验证的通过数。
+
+没有改动平台失败处理、候选冻结、独立测试执行或最终人工验收。新任务的 scoped profile 复制当前 SOUL；已有任务保留其原指导。部署时只应用本轮 SOUL 增量，不把其他未通过评估的候选一起推广。
+
 ## 修改与可观察问题的对应
 
 | 失败/缺口 | 证据和原因 | 本次最小对应修改 |
@@ -40,11 +54,16 @@
 | 列目录的内联 Python 被单轮审批拒绝；测试使用错误 cwd | 原始 terminal 工具回执，随后简单搜索可继续 | 优先既有搜索/简单命令；要求候选 cwd；保留原审批，失败如实交接 |
 | 旧绿灯掩盖本轮新增接口未实现 | 原需求、旧任务正文、diff 和测试回执一起证明历史任务漏传本轮要求 | 传递缺陷已由本次开始前的最新代码修复，不计作 skill 收益；只补角色如何核对当前要求与历史覆盖 |
 | 新增 skill 初始化中断导致后续重试漏文件 | 独立验收者中断复制的复现；旧条件只看 profile 是否存在 | 任务尚未绑定时重做指导复制；绑定后保持版本；回归覆盖中断重试和批准时不覆盖 |
+| 新任务被误当成后续修复轮，Tester 要求不存在的旧材料 | 前轮保留任务的原始 Tester 轨迹：已读当前 DESIGN，却因需求含“修复/本轮修改”而要求 `/handoff/repair`；原生任务实际为 round 0 | owner 显式传轮次；角色按真实阶段判断必需交接；后续轮仍要求 result.json，附属材料按存在与验收影响判断 |
+| 平台的固定 discovery 命令与角色自选命令不一致 | 正常任务曾出现自测通过、平台因相对导入失败；manifest 有命令，旧正文未传递 | 复用 manifest 的固定命令及候选根目录语义，不修改验证入口 |
+| 平台与独立测试通过仍遗漏合法输入 | 正常任务的新旧候选均在相同 Python 3.12 容器对合法大整数抛 ValueError；测试只覆盖普通大小，未触及转换默认限制 | 调查/编码/测试/审查按声明输入域及实际调用链选择边界和独立预期值；不把某个数值或特定算法写进通用 skill |
 
 架构判断、竞争解释和根因修复是请求中的专业方法要求；现有少量轨迹不能证明每一项原来都做错。它们均按实际任务需要触发，不强制简单任务多方案、多假设或外部检索，也不将方法完整等同于模型效果已改善。
 
 ## 版本依据与验证边界
 
 读取并比较了对应版本的 [Kanban worker](https://github.com/NousResearch/hermes-agent/blob/bf0203a794a07aac3ff764972ab9087baa4e4f4e/gateway/session_kanban.py)、[skill loader](https://github.com/NousResearch/hermes-agent/blob/bf0203a794a07aac3ff764972ab9087baa4e4f4e/agent/skill_commands.py)（[MIT](https://github.com/NousResearch/hermes-agent/blob/bf0203a794a07aac3ff764972ab9087baa4e4f4e/LICENSE)）与 [Agent Skills 格式](https://github.com/agentskills/agentskills/blob/main/docs/specification.mdx)（Apache-2.0）。复用原生加载契约，没有复制外部实现或新增依赖。未来 Hermes 版本应重新核对这条原生路径，不能从当前测试直接外推。
+
+后续轮次与边界优化另核对同 commit 的 [worker context](https://github.com/NousResearch/hermes-agent/blob/bf0203a794a07aac3ff764972ab9087baa4e4f4e/hermes_cli/kanban_db.py) 和 [CPython 3.12 的整数转换限制](https://github.com/python/cpython/blob/3.12/Include/internal/pycore_long.h)（[PSF License v2](https://github.com/python/cpython/blob/3.12/LICENSE)）。Python 参考仅解释实测缺陷，不能把该限制套用于所有语言或任务；未复制外部代码。
 
 离线测试证明打包、发现、原生预载输入、异常路径和权限配置；在线回放才观察模型行为。已安装文件、已加载正文、遵循方法、最终交付四层应分开报告。生产 owner 的并发和失败恢复不在有限串行回放的证明范围。生产安装与服务重启须依据实际发布结果另行记录，不能拿源码测试代替已生效。

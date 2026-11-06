@@ -12,6 +12,7 @@
 | 你要做什么 | 去哪里 |
 |---|---|
 | 已有 Hermes v0.22.5，安装中文工作台 | [下载接入包](downloads/hermes-workflow-local-v2-zh-CN.tar.gz?raw=true) · [安装说明](docs/LOCAL_HERMES_V0225.md) |
+| 点击桌面图标启动已有工作流 | [Linux 桌面应用](docs/DESKTOP_APP.md) |
 | 了解页面按钮和操作 | [按钮与按键说明](docs/WORKFLOW_APP_BUTTONS_ZH.md) · [应用说明](docs/WORKFLOW_APP.md) |
 | 少点按钮：授权范围、飞书决策卡、决策记录 | [自动化与决策](docs/AUTOMATION_ZH.md) |
 | 角色 skill、原生加载与对照验收 | [角色与机制](docs/ROLE_SKILLS.md) · [验收与复跑](docs/ROLE_SKILLS_EVALUATION.md) |

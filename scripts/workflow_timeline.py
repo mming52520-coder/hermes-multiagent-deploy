@@ -126,6 +126,7 @@ def execution_context(workflow, manifest: dict) -> dict:
     changed = sorted(key for key in files.keys() | source.keys() if files.get(key) != source.get(key)) if files is not None else []
     readiness = workflow.readiness(execution) if state == "HUMAN_REQUIRED" and not row.get("started_at") else None
     return {"execution_id": execution, "objective": manifest["objective"], "round": row["number"], "state": state,
+            "deliverable_type": manifest.get("deliverable_type", "code"),
             "observed_at": time.time(), "source_revision": manifest["source_revision"], "tasks": tasks,
             "current_request": manifest["failures"][-1] if row["number"] and manifest["failures"] else None,
             "failures": manifest["failures"], "readiness": readiness,

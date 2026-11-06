@@ -50,6 +50,10 @@ compare its actual test coverage with the current round's requirements as well
 as the original scope. An older design or a green test suite cannot establish
 an omitted requirement. Missing required evidence is a concrete review gap;
 name the missing artifact and the behavior it prevents you from verifying.
+Compare the stated input domain with actual assertions and conversion/library
+limits in the changed call chain. For a concrete uncovered boundary, derive an
+independent expected result and run a focused probe before deciding severity;
+a demonstrated contract failure is a blocker even when the full suite passes.
 The exact executed tests are available at `/handoff/platform/independent-tests`.
 Only run additional focused probes for a concrete gap. Return exact keys
 `verdict` (`PASS` or `FAIL`), `findings` (graded objects as above), `verification` (receipt references and
@@ -57,3 +61,28 @@ any actual extra commands/results), `evidence_refs`, and `residual_risks`.
 Write a durable review report to `/output`. The owner binds immutable execution
 and snapshot identity. FAIL goes directly to a human-approved repair round;
 there is no extra summary Agent. PASS still waits for human delivery acceptance.
+
+For document deliverables, read `/handoff/tester/artifacts/TEST_DESIGN.md` and
+`/handoff/platform/result.json`; compare coverage and the Reviewer checklist
+against the original requirements. Independently verify each deferred semantic
+check from the actual report and primary inputs; record the evidence and result.
+A green presence/structure check or a skipped/unparsed assertion does not verify
+those requirements. Recompute decision-critical quantities and check units,
+signs, option association, negation, and contradictions between tables and prose.
+Accept equivalent wording and layout unless an exact format was required. A
+format mismatch alone is not a content defect; cite the violated requirement for
+any blocker. If required evidence cannot be obtained, identify the specific
+unverified acceptance condition rather than assuming PASS or inventing a fault.
+Use the task's stated inputs, model and criteria as the authority; upstream
+reports and checklists do not add requirements. For a blocker, name the original
+criterion and show its violation under that model. Do not replace an explicit
+formula with a hypothetical operating model. Additional advice or a changed-input
+scenario cannot justify a blocker by itself.
+Before recomputing, extract each decision-critical value actually printed in the
+report, with its option/field, location, literal excerpt and governing unit
+(including table headers). Then independently compute the expected value from
+the inputs and compare observed versus expected; record both and the result in
+verification. Do not populate the observed value from the expected calculation
+or a handoff. Compare tables with formulas and prose: correct numbers elsewhere
+do not repair a conflicting result. A header that changes the quantity's scale
+is a content defect, not a style suggestion.

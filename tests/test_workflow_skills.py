@@ -48,13 +48,16 @@ class RoleSkillTest(unittest.TestCase):
                     patch("agent.kanban_turn_recovery.recover_failed_kanban_turns"):
                 catalog = json.loads(skills_list())
                 self.assertTrue(any(item["name"] == name for item in catalog["skills"]))
+                with fixtures.connect_closing(board="default") as conn:
+                    context = fixtures.kb.build_worker_context(conn, task.id)
                 _run_task_turns(Agent(), {"text": "fixture request"}, [], {
-                    "skills": task.skills, "context": "fixture task context", "goal_mode": False,
+                    "skills": task.skills, "context": context, "goal_mode": False,
                     "task_id": task.id,
                 })
             self.assertEqual(len(calls), 1)
             self.assertIn(copied.read_text().split("---", 2)[2].strip(), calls[0])
-            self.assertIn("fixture task context", calls[0])
+            self.assertIn(context, calls[0])
+            self.assertIn("Workflow round: 0 (initial execution)", calls[0])
         for role in ("tester", "reviewer"):
             self.assertFalse(self.task(role).skills)
 

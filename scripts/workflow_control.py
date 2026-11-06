@@ -32,6 +32,11 @@ LEGACY_ROLES = ("researcher", "builder", "reviewer", "orchestrator")
 ROLES = ("researcher", "builder", "tester", "reviewer")
 CURRENT_WORKFLOW_VERSION = 2
 FAILURE_KINDS = {"implementation", "test", "environment", "api_model", "permission", "requirements"}
+DOCUMENT_TEST_COMMAND = (
+    "python3 -B -c 'from pathlib import Path; p=Path(\"deliverables/DESIGN.md\"); "
+    "assert p.is_file() and not p.is_symlink() and p.read_text(encoding=\"utf-8\").strip(), "
+    "\"Missing document delivery: deliverables/DESIGN.md\"; print(\"Document delivery present\")'"
+)
 
 
 class Rejected(ValueError):
@@ -309,8 +314,7 @@ class Workflow:
                     "Current round revision/repair requirements:\n"
                     + manifest["failures"][-1]["reason"] + "\n\n"
                     "Implement and verify this request together with the original scope below. "
-                    "Earlier handoffs and PASS results describe the previous round; they do not verify this request. "
-                    "Read /handoff/repair/result.json for the associated evidence.\n\n"
+                    "Earlier handoffs and PASS results describe the previous round; they do not verify this request.\n\n"
                 ) + body
             if not self.modern(manifest):
                 body += ("Return execution_id, source_revision, candidate_revision, candidate_digest, "
@@ -324,17 +328,39 @@ class Workflow:
             elif role == "orchestrator":
                 body += "Summarize evidence only. Kanban done is NOT acceptance. Do not create unbounded repair cards.\n"
             if self.modern(manifest):
+                if manifest.get("deliverable_type", "code") == "document":
+                    body = (
+                        "Deliverable type: document (no source-code implementation). "
+                        "The formal report MUST be /candidate/deliverables/DESIGN.md; "
+                        "/output is for role handoffs, not the final delivery. "
+                        "Builder writes the report into the candidate, even when reusing the Researcher report. "
+                        "Tester checks that exact file from Path.cwd(); fixtures are not the submitted report. "
+                        "Reviewer checks the report and its sources against the requirements; "
+                        "structural tests alone do not establish factual or engineering correctness.\n"
+                    ) + body
+                # Native worker context caps the task body. Put owner-known
+                # execution facts before potentially long objective prose.
+                if row["number"]:
+                    round_context = (
+                        f"Workflow round: {row['number']} (revision/repair)\n"
+                        "Repair handoff: required /handoff/repair/result.json. Read the current request and recorded evidence. "
+                        "Use prior platform logs, independent-tests and reviewer-report only when present; "
+                        "a previous role may not have run. Preserve relevant failing regressions. "
+                        "If unavailable evidence prevents a specific check, state that gap and its effect.\n"
+                    )
+                else:
+                    round_context = (
+                        "Workflow round: 0 (initial execution)\n"
+                        "Repair handoff: not applicable; there is no previous workflow round or /handoff/repair. "
+                        "Words such as fix/revision in the objective do not create that dependency.\n"
+                    )
+                body = (round_context + "Platform project test command (from frozen candidate root; "
+                        "worker alias /candidate):\n" + manifest["test_command"] + "\n\n" + body)
                 body += (
                     "Read /handoff for upstream reports and owner-bound result.json. Write persistent reports/artifacts to /output.\n"
                     "Completion metadata: verification (commands/results), findings, evidence_refs, residual_risks. "
                     "The owner records immutable execution/source/candidate identity and cumulative changed_files; do not calculate them.\n"
                 )
-                if row["number"]:
-                    body += (
-                        "Repair round: read /handoff/repair/result.json, any platform-verification.log and reviewer report. "
-                        "The previous independent failing tests are in /handoff/repair/independent-tests. "
-                        "Address the concrete findings; do not rely on the user to copy them into this task.\n"
-                    )
                 if role == "researcher":
                     body += "Write /output/DESIGN.md with requirements, observable outputs and an acceptance-scenario matrix.\n"
                     recorded = workflow_policy.read_decisions(self.root, self.board, limit=3000)
@@ -379,18 +405,22 @@ class Workflow:
             self.save(manifest)
             previous = tid
 
-    def submit(self, objective: str, instance: str = "", *, notify: bool = True) -> dict:
-        manifest = self._submit(objective, instance)
+    def submit(self, objective: str, instance: str = "", *, notify: bool = True, deliverable_type: str = "code") -> dict:
+        manifest = self._submit(objective, instance, deliverable_type)
         if notify and self.modern(manifest):
             workflow_feishu.sync_progress(self, manifest["execution_id"])
         return manifest
 
-    def _submit(self, objective: str, instance: str) -> dict:
+    def _submit(self, objective: str, instance: str, deliverable_type: str = "code") -> dict:
+        if deliverable_type not in ("code", "document"):
+            raise Rejected("unsupported deliverable type")
+        if deliverable_type == "document" and CURRENT_WORKFLOW_VERSION < 2:
+            raise Rejected("document delivery requires workflow v2")
         for key in ("OUTPUT_DIR", "DOCKER_IMAGE"):
             if not self.env.get(key):
                 raise Rejected(f"项目绑定配置缺少 {key}")
         revision = git(self.project, "rev-parse", "HEAD")
-        execution = execution_identity(objective, revision, instance)
+        execution = execution_identity(objective, revision, instance if deliverable_type == "code" else instance + ":document")
         with self.locked(execution):
             manifest_file = self.path(execution) / "execution.json"
             with workflow_runtime.connect_closing(board=self.board) as conn:
@@ -415,7 +445,9 @@ class Workflow:
                     "execution_id":execution, "instance":instance, "objective":objective, "project":str(self.project),
                     "board":self.board, "source_revision":revision, "source_files":tree_files(candidate),
                     "created_at":time.time(), "rounds":[], "failures":[], "approved_write":False,
-                    "test_command":self.env.get("WORKFLOW_TEST_COMMAND", ""),
+                    "deliverable_type": deliverable_type,
+                    "test_command": (DOCUMENT_TEST_COMMAND if deliverable_type == "document"
+                                     else self.env.get("WORKFLOW_TEST_COMMAND", "")),
                     "image":self.env["DOCKER_IMAGE"],
                     "budget":{
                         "max_rounds":int(self.env.get("WORKFLOW_MAX_REPAIR_ROUNDS", "2")),

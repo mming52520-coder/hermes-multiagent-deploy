@@ -115,6 +115,25 @@ class WorkflowV2Test(unittest.TestCase):
                 self.assertEqual(kb.get_task(conn, task_id).status, "triage")
         self.assertFalse((self.workflow.path(self.execution) / "acceptance.json").exists())
 
+    def test_initial_fix_request_exposes_round_and_command_in_native_context(self):
+        command = "python3 -m unittest discover -s tests -p 'test_*.py' -v"
+        self.workflow.env["WORKFLOW_TEST_COMMAND"] = command
+        # Native task bodies are capped. Operational context must precede prose,
+        # including requests which use revision language in their first round.
+        manifest = self.workflow.submit("修复并完成本轮修改。" + "原始需求。" * 2200, notify=False)
+        self.workflow.env["WORKFLOW_TEST_COMMAND"] = "not-the-frozen-command"
+        with fixtures.connect_closing(board="default") as conn:
+            for role, tid in manifest["rounds"][0]["tasks"].items():
+                context = kb.build_worker_context(conn, tid)
+                self.assertIn("Workflow round: 0 (initial execution)", context)
+                self.assertIn("Repair handoff: not applicable", context)
+                self.assertIn(command, context)
+                self.assertNotIn("not-the-frozen-command", context)
+                self.assertFalse((self.workflow.handoff_path(manifest["execution_id"], 0) / "repair").exists())
+                task = kb.get_task(conn, tid)
+                self.assertEqual(task.status, "triage")
+        self.assertEqual(manifest["test_command"], command)
+
     def test_operator_retry_preserves_failed_run_and_uses_native_unblock(self):
         self.workflow.approve(self.execution)
         self.advance()
@@ -225,6 +244,12 @@ class WorkflowV2Test(unittest.TestCase):
         self.assertEqual(self.advance()["state"],"RUNNING_BUILD_AND_TEST")
         repair = self.workflow.handoff_path(self.execution,1) / "repair"
         self.assertEqual(json.loads((repair / "result.json").read_text())["platform"]["status"],"FAIL")
+        self.assertNotIn("reviewer", json.loads((repair / "result.json").read_text()))
+        with fixtures.connect_closing(board="default") as conn:
+            context = kb.build_worker_context(conn, self.row()["tasks"]["tester"])
+            self.assertIn("Workflow round: 1 (revision/repair)", context)
+            self.assertIn("Repair handoff: required /handoff/repair/result.json", context)
+            self.assertIn("only when present", context)
         self.assertIn("Independent test cases",(repair / "platform-verification.log").read_text())
         self.assertTrue((repair / "independent-tests" / "test_feature.py").is_file())
         self.deliver(1)
@@ -252,6 +277,31 @@ class WorkflowV2Test(unittest.TestCase):
         self.advance()
         repair = self.workflow.handoff_path(self.execution,1) / "repair" / "result.json"
         self.assertEqual(json.loads(repair.read_text())["reviewer"]["findings"],["actual interface mismatch"])
+
+    def test_repair_bundle_can_omit_unavailable_optional_artifacts(self):
+        self.research()
+        self.deliver()
+        self.advance()
+        self.completed("reviewer", {"verdict": "FAIL", "findings": ["actual interface mismatch"]})
+        self.advance()
+        previous = self.workflow.path(self.execution) / "round-0"
+        for name in ("platform-verification.json", "platform-verification.log"):
+            (previous / name).unlink()
+        shutil.rmtree(previous / "independent-tests")
+        shutil.rmtree(self.workflow.output_path(self.execution, 0, "reviewer"))
+        self.workflow.repair(self.execution, "implementation", "fix actual interface mismatch")
+        self.workflow.approve(self.execution)
+        self.assertEqual(self.advance()["state"], "RUNNING_BUILD_AND_TEST")
+        repair = self.workflow.handoff_path(self.execution, 1) / "repair"
+        result = json.loads((repair / "result.json").read_text())
+        self.assertEqual(result["operator_request"]["reason"], "fix actual interface mismatch")
+        self.assertIn("reviewer", result)
+        self.assertNotIn("platform", result)
+        self.assertEqual({p.name for p in repair.iterdir()}, {"result.json"})
+        with fixtures.connect_closing(board="default") as conn:
+            context = kb.build_worker_context(conn, self.row()["tasks"]["builder"])
+            self.assertIn("Repair handoff: required /handoff/repair/result.json", context)
+            self.assertIn("only when present", context)
 
     def test_evidence_repair_retries_only_reviewer_and_preserves_failed_run(self):
         self.research()
